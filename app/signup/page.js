@@ -109,13 +109,12 @@ function SignupContent() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="bg-[#006B7D] text-white px-3 py-2 font-bold text-2xl">
-                ST
-              </div>
-              <span className="text-[#006B7D] font-semibold text-2xl">
-                FranklinStreet
-              </span>
+            <div className="flex items-center justify-center mb-4">
+              <img
+                src="/favicon.ico"
+                alt="Franklin Street"
+                className="h-16 w-auto"
+              />
             </div>
             <h2 className="mt-6 text-3xl font-normal text-gray-900">
               Invitation Required
@@ -147,13 +146,12 @@ function SignupContent() {
       <div className="max-w-md w-full space-y-8">
         {/* Logo */}
         <div className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="bg-[#006B7D] text-white px-3 py-2 font-bold text-2xl">
-              ST
-            </div>
-            <span className="text-[#006B7D] font-semibold text-2xl">
-              FranklinStreet
-            </span>
+          <div className="flex items-center justify-center mb-4">
+            <img
+              src="/favicon.ico"
+              alt="Franklin Street"
+              className="h-16 w-auto"
+            />
           </div>
           <h2 className="mt-6 text-3xl font-normal text-gray-900">
             Create your account

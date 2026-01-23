@@ -38,9 +38,9 @@ export default function Header() {
           {/* Franklin Street Logo */}
           <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
             <img
-              src="/franklin-street-logo.svg"
+              src="/favicon.ico"
               alt="Franklin Street"
-              className="h-10"
+              className="h-10 w-auto"
             />
           </Link>
 
