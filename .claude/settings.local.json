@@ -5,7 +5,12 @@
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd Franklin Street Claims Management System\n\nFeatures:\n- Modern iOS-inspired UI with Franklin Street branding\n- Client management with logo upload and state selection\n- Team-based authentication with organization support\n- Admin user management with invite system\n- Password reset functionality\n- Role-based access control \\(admin, manager, user\\)\n- Responsive design with search and filtering\n- Supabase backend integration\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git branch:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)"
     ]
   }
 }
