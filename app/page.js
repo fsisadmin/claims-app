@@ -1,65 +1,224 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Header from '@/components/Header'
+import ClientCard from '@/components/ClientCard'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function Home() {
+  const router = useRouter()
+  const { user, profile, loading: authLoading } = useAuth()
+  const [clients, setClients] = useState([])
+  const [filteredClients, setFilteredClients] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login')
+    }
+  }, [user, authLoading, router])
+
+  // Fetch clients from Supabase
+  useEffect(() => {
+    if (user && profile) {
+      fetchClients()
+    }
+  }, [user, profile])
+
+  async function fetchClients() {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name', { ascending: true })
+
+      if (error) throw error
+
+      setClients(data || [])
+      setFilteredClients(data || [])
+    } catch (error) {
+      console.error('Error fetching clients:', error)
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Search functionality
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredClients(clients)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = clients.filter(
+        client =>
+          client.name?.toLowerCase().includes(query) ||
+          client.ams_code?.toLowerCase().includes(query) ||
+          client.client_number?.toLowerCase().includes(query) ||
+          client.producer_name?.toLowerCase().includes(query) ||
+          client.account_manager?.toLowerCase().includes(query)
+      )
+      setFilteredClients(filtered)
+    }
+  }, [searchQuery, clients])
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#006B7D]"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render if not authenticated (will redirect)
+  if (!user) {
+    return null
+  }
+
+  // Check if user has organization assigned
+  if (profile && !profile.organization_id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="max-w-3xl mx-auto px-6 py-12">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-amber-900 mb-2">
+              Organization Required
+            </h2>
+            <p className="text-amber-800">
+              Your account has not been assigned to an organization yet. Please contact
+              your administrator to be added to an organization before you can access
+              clients.
+            </p>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Header />
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Clients Section Header */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-semibold text-gray-900 text-center mb-8">
+            Clients
+          </h2>
+
+          {/* Search and Add Client */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            {/* Search Bar */}
+            <div className="flex-1 max-w-2xl">
+              <div className="relative group">
+                <svg
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#006B7D] transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search clients..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] transition-all shadow-sm hover:shadow-md text-gray-900 placeholder:text-gray-400"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Add Client Button */}
+            <button
+              onClick={() => router.push('/clients/add')}
+              className="bg-[#006B7D] hover:bg-[#008BA3] text-white px-6 py-3.5 rounded-2xl font-semibold transition-all shadow-md hover:shadow-lg hover:scale-[1.02] whitespace-nowrap active:scale-[0.98]"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              Add Client
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-16">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
+            <p className="mt-4 text-gray-600 font-medium">Loading clients...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <p className="text-red-800 font-medium">
+              Error loading clients: {error}
+            </p>
+            <p className="text-sm text-red-600 mt-2">
+              Make sure you have set up your Supabase credentials in .env.local
+            </p>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && filteredClients.length === 0 && searchQuery && (
+          <div className="text-center py-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-gray-600 font-medium">No clients found matching "{searchQuery}"</p>
+            <p className="text-gray-500 text-sm mt-2">Try adjusting your search terms</p>
+          </div>
+        )}
+
+        {!loading && !error && clients.length === 0 && !searchQuery && (
+          <div className="text-center py-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#006B7D]/10 mb-4">
+              <svg className="w-8 h-8 text-[#006B7D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <p className="text-gray-600 font-medium">No clients yet</p>
+            <p className="text-gray-500 text-sm mt-2">Click "Add Client" to create your first one</p>
+          </div>
+        )}
+
+        {/* Clients Grid */}
+        {!loading && !error && filteredClients.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredClients.map(client => (
+              <ClientCard key={client.id} client={client} />
+            ))}
+          </div>
+        )}
       </main>
     </div>
-  );
+  )
 }
