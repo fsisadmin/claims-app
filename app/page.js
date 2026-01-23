@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import ClientCard from '@/components/ClientCard'
@@ -11,7 +11,6 @@ export default function Home() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
   const [clients, setClients] = useState([])
-  const [filteredClients, setFilteredClients] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -23,49 +22,49 @@ export default function Home() {
     }
   }, [user, authLoading, router])
 
-  // Fetch clients from Supabase
+  // Fetch clients from Supabase (optimized with organization filter)
   useEffect(() => {
-    if (user && profile) {
+    if (user && profile?.organization_id) {
       fetchClients()
     }
-  }, [user, profile])
+  }, [user, profile?.organization_id])
 
-  async function fetchClients() {
+  const fetchClients = useCallback(async () => {
     try {
       setLoading(true)
+      // Only fetch clients from user's organization
       const { data, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('id, name, state, ams_code, client_number, producer_name, account_manager, logo_url')
+        .eq('organization_id', profile.organization_id)
         .order('name', { ascending: true })
 
       if (error) throw error
 
       setClients(data || [])
-      setFilteredClients(data || [])
     } catch (error) {
       console.error('Error fetching clients:', error)
       setError(error.message)
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile?.organization_id])
 
-  // Search functionality
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredClients(clients)
-    } else {
-      const query = searchQuery.toLowerCase()
-      const filtered = clients.filter(
-        client =>
-          client.name?.toLowerCase().includes(query) ||
-          client.ams_code?.toLowerCase().includes(query) ||
-          client.client_number?.toLowerCase().includes(query) ||
-          client.producer_name?.toLowerCase().includes(query) ||
-          client.account_manager?.toLowerCase().includes(query)
-      )
-      setFilteredClients(filtered)
+  // Optimized search with useMemo
+  const filteredClients = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return clients
     }
+
+    const query = searchQuery.toLowerCase()
+    return clients.filter(
+      client =>
+        client.name?.toLowerCase().includes(query) ||
+        client.ams_code?.toLowerCase().includes(query) ||
+        client.client_number?.toLowerCase().includes(query) ||
+        client.producer_name?.toLowerCase().includes(query) ||
+        client.account_manager?.toLowerCase().includes(query)
+    )
   }, [searchQuery, clients])
 
   // Show loading while checking authentication

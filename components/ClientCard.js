@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import Link from 'next/link'
 
 // Function to generate initials from company name
@@ -36,7 +37,7 @@ function getColorFromName(name) {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export default function ClientCard({ client }) {
+const ClientCard = memo(function ClientCard({ client }) {
   const initials = getInitials(client.name)
   const bgColor = getColorFromName(client.name)
 
@@ -98,4 +99,6 @@ export default function ClientCard({ client }) {
       </div>
     </Link>
   )
-}
+})
+
+export default ClientCard
