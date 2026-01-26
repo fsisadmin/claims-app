@@ -22,16 +22,16 @@ export default function Home() {
     }
   }, [user, authLoading, router])
 
-  // Fetch clients from Supabase (optimized with organization filter)
-  useEffect(() => {
-    if (user && profile?.organization_id) {
-      fetchClients()
-    }
-  }, [user, profile?.organization_id])
-
   const fetchClients = useCallback(async () => {
+    if (!profile?.organization_id) {
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
+      console.log('Fetching clients for organization:', profile.organization_id)
+
       // Only fetch clients from user's organization
       const { data, error } = await supabase
         .from('clients')
@@ -39,8 +39,12 @@ export default function Home() {
         .eq('organization_id', profile.organization_id)
         .order('name', { ascending: true })
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
 
+      console.log('Fetched clients:', data?.length || 0)
       setClients(data || [])
     } catch (error) {
       console.error('Error fetching clients:', error)
@@ -49,6 +53,15 @@ export default function Home() {
       setLoading(false)
     }
   }, [profile?.organization_id])
+
+  // Fetch clients from Supabase (optimized with organization filter)
+  useEffect(() => {
+    if (user && profile) {
+      fetchClients()
+    } else if (!authLoading && user && !profile) {
+      setLoading(false)
+    }
+  }, [user, profile, authLoading, fetchClients])
 
   // Optimized search with useMemo
   const filteredClients = useMemo(() => {
