@@ -97,6 +97,31 @@ export default function Home() {
     return null
   }
 
+  // If profile failed to load but user exists, show error
+  if (!authLoading && user && !profile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="max-w-md bg-white rounded-3xl shadow-md p-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Profile Loading Error</h2>
+          <p className="text-gray-600 mb-4">
+            Unable to load your profile. This might be because:
+          </p>
+          <ul className="list-disc list-inside text-gray-600 space-y-2 mb-6">
+            <li>Your account hasn't been set up yet</li>
+            <li>Database connection issues</li>
+            <li>Permission issues with your account</li>
+          </ul>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-[#006B7D] text-white px-4 py-2 rounded-lg hover:bg-[#008BA3] transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // Check if user has organization assigned
   if (profile && !profile.organization_id) {
     return (

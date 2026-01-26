@@ -58,12 +58,22 @@ export function AuthProvider({ children }) {
   async function loadUserProfile(userId) {
     try {
       console.log('🔍 Loading profile for user:', userId)
-      const profileData = await getUserProfile(userId)
+
+      // Add timeout protection (10 seconds)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Profile loading timeout after 10s')), 10000)
+      )
+
+      const profilePromise = getUserProfile(userId)
+      const profileData = await Promise.race([profilePromise, timeoutPromise])
+
       console.log('✅ Profile loaded:', profileData)
       setProfile(profileData)
     } catch (error) {
       console.error('❌ Error loading user profile:', error)
-      console.error('Error details:', error.message, error.details)
+      console.error('Error details:', error.message)
+      // Set profile to null on error but user can still see they're logged in
+      setProfile(null)
     } finally {
       console.log('🏁 Setting loading to false')
       setLoading(false)
