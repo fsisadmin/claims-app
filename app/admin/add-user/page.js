@@ -7,7 +7,7 @@ import Header from '@/components/Header'
 
 export default function AddUserPage() {
   const router = useRouter()
-  const { profile, isAdmin } = useAuth()
+  const { user, profile, isAdmin, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [role, setRole] = useState('user')
@@ -15,10 +15,22 @@ export default function AddUserPage() {
   const [error, setError] = useState(null)
   const [setupLink, setSetupLink] = useState(null)
 
-  // Redirect if not admin
-  if (profile && !isAdmin) {
+  // Redirect if not authenticated or not admin
+  if (!authLoading && (!user || !isAdmin)) {
     router.push('/')
     return null
+  }
+
+  // Show loading while auth is loading
+  if (authLoading || !profile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   const handleSubmit = async (e) => {

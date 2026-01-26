@@ -25,7 +25,12 @@ export default function ResetPasswordPage() {
       setSuccess(true)
     } catch (error) {
       console.error('Password reset error:', error)
-      setError(error.message || 'Failed to send reset email')
+      // Better error message for configuration errors
+      if (error.message && (error.message.includes('Unexpected token') || error.message.includes('DOCTYPE'))) {
+        setError('Server configuration error. Please ensure environment variables are set correctly on Render.')
+      } else {
+        setError(error.message || 'Failed to send reset email')
+      }
     } finally {
       setLoading(false)
     }

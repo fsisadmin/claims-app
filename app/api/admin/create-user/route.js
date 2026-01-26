@@ -64,14 +64,22 @@ export async function POST(request) {
       )
     }
 
-    // Generate password reset link
+    // Generate password setup link (recovery type allows setting password)
+    // Note: The redirect URL should match your production domain or localhost
+    const redirectUrl = process.env.NEXT_PUBLIC_SITE_URL
+      ? `${process.env.NEXT_PUBLIC_SITE_URL}/update-password`
+      : 'http://localhost:3000/update-password'
+
     const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
+      type: 'recovery',
       email,
+      options: {
+        redirectTo: redirectUrl,
+      }
     })
 
     if (resetError) {
-      console.error('Reset link error:', resetError)
+      console.error('Password setup link error:', resetError)
     }
 
     return NextResponse.json({

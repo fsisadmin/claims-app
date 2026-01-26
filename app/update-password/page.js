@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function UpdatePasswordPage() {
@@ -15,11 +16,36 @@ export default function UpdatePasswordPage() {
 
   // Check if user has valid reset token
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        setError('Invalid or expired reset link. Please request a new one.')
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          console.error('Session error:', sessionError)
+          setError('Error loading session. Please try the reset link again.')
+          return
+        }
+
+        if (!session) {
+          // Check for hash params (Supabase sends recovery token in URL hash)
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const accessToken = hashParams.get('access_token')
+          const type = hashParams.get('type')
+
+          if (accessToken && type === 'recovery') {
+            // Valid recovery token in URL, supabase will handle it
+            console.log('Valid recovery token found')
+          } else {
+            setError('Invalid or expired reset link. Please request a new password reset.')
+          }
+        }
+      } catch (err) {
+        console.error('Error checking session:', err)
+        setError('Error loading page. Please try again.')
       }
-    })
+    }
+
+    checkSession()
   }, [])
 
   const handleChange = e => {
@@ -91,6 +117,11 @@ export default function UpdatePasswordPage() {
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800 text-sm">{error}</p>
+            <p className="text-red-700 text-xs mt-2">
+              <Link href="/reset-password" className="underline hover:text-red-900">
+                Request a new password reset link
+              </Link>
+            </p>
           </div>
         )}
 

@@ -12,7 +12,9 @@ export default function EditClientPage() {
   const { user, profile, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
+  const [logoPreview, setLogoPreview] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
     street_address: '',
@@ -66,6 +68,7 @@ export default function EditClientPage() {
         client_number: data.client_number || '',
         logo_url: data.logo_url || ''
       })
+      setLogoPreview(data.logo_url || null)
     } catch (error) {
       console.error('Error fetching client:', error)
       setError(error.message)
@@ -80,6 +83,67 @@ export default function EditClientPage() {
       ...prev,
       [name]: value
     }))
+  }
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      setUploading(true)
+      setError(null)
+
+      // Create unique filename
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${profile.organization_id}/${params.id}-${Date.now()}.${fileExt}`
+
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from('client-logos')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('client-logos')
+        .getPublicUrl(fileName)
+
+      // Update form data and preview
+      setFormData(prev => ({
+        ...prev,
+        logo_url: publicUrl
+      }))
+      setLogoPreview(publicUrl)
+    } catch (error) {
+      console.error('Error uploading logo:', error)
+      setError(error.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemoveLogo = () => {
+    setFormData(prev => ({
+      ...prev,
+      logo_url: ''
+    }))
+    setLogoPreview(null)
   }
 
   const handleSubmit = async (e) => {
@@ -320,19 +384,55 @@ export default function EditClientPage() {
               </div>
             </div>
 
-            {/* Logo URL */}
+            {/* Logo Upload */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Logo URL
+                Client Logo
               </label>
-              <input
-                type="url"
-                name="logo_url"
-                value={formData.logo_url}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-white text-gray-900 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] transition-all"
-                placeholder="https://example.com/logo.png"
-              />
+
+              {/* Logo Preview */}
+              {logoPreview && (
+                <div className="mb-4 flex items-center gap-4">
+                  <div className="w-24 h-24 rounded-2xl border-2 border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center">
+                    <img
+                      src={logoPreview}
+                      alt="Logo preview"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="text-red-600 hover:text-red-700 font-medium text-sm"
+                  >
+                    Remove Logo
+                  </button>
+                </div>
+              )}
+
+              {/* File Upload */}
+              <div className="relative">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  disabled={uploading}
+                  className="hidden"
+                  id="logo-upload"
+                />
+                <label
+                  htmlFor="logo-upload"
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-white text-gray-700 border border-gray-200 rounded-2xl hover:bg-gray-50 transition-all cursor-pointer"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  {uploading ? 'Uploading...' : logoPreview ? 'Change Logo' : 'Upload Logo'}
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Supported formats: JPG, PNG, GIF (max 5MB)
+              </p>
             </div>
 
             {/* Action Buttons */}
