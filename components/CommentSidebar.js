@@ -130,7 +130,8 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
   async function fetchAttachments() {
     try {
-      const { data, error } = await supabase
+      // Fetch standalone entity attachments
+      const { data: entityData, error: entityError } = await supabase
         .from('entity_attachments')
         .select('*')
         .eq('entity_type', entityType)
@@ -138,10 +139,58 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setAttachments(data || [])
+      if (entityError) throw entityError
+
+      // Also fetch all comment attachments for this entity
+      const { data: commentData, error: commentError } = await supabase
+        .from('comments')
+        .select('id')
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .eq('organization_id', organizationId)
+
+      let allCommentAttachments = []
+      if (!commentError && commentData && commentData.length > 0) {
+        const commentIds = commentData.map(c => c.id)
+        const { data: attachData, error: attachError } = await supabase
+          .from('comment_attachments')
+          .select('*')
+          .in('comment_id', commentIds)
+          .order('created_at', { ascending: false })
+
+        if (!attachError && attachData) {
+          // Add a source field to distinguish comment attachments
+          allCommentAttachments = attachData.map(a => ({ ...a, source: 'comment' }))
+        }
+      }
+
+      // Combine both types of attachments, mark entity attachments
+      const entityAttachments = (entityData || []).map(a => ({ ...a, source: 'entity' }))
+      const allFiles = [...entityAttachments, ...allCommentAttachments]
+
+      // Sort by created_at descending
+      allFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+      setAttachments(allFiles)
     } catch (error) {
       console.error('Error fetching attachments:', error)
+    }
+  }
+
+  // Download all files as individual downloads
+  async function handleDownloadAll() {
+    if (attachments.length === 0) return
+
+    for (const attachment of attachments) {
+      const link = document.createElement('a')
+      link.href = attachment.file_url
+      link.download = attachment.file_name
+      link.target = '_blank'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      // Small delay between downloads to prevent browser blocking
+      await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
 
@@ -325,7 +374,7 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
           .single()
 
         if (attachmentError) throw attachmentError
-        setAttachments(prev => [attachmentData, ...prev])
+        setAttachments(prev => [{ ...attachmentData, source: 'entity' }, ...prev])
       }
     } catch (error) {
       console.error('Error uploading file:', error)
@@ -342,13 +391,26 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     try {
       await supabase.storage.from('attachments').remove([attachment.storage_path])
 
+      // Delete from the appropriate table based on source
+      const tableName = attachment.source === 'comment' ? 'comment_attachments' : 'entity_attachments'
       const { error } = await supabase
-        .from('entity_attachments')
+        .from(tableName)
         .delete()
         .eq('id', attachment.id)
 
       if (error) throw error
       setAttachments(prev => prev.filter(a => a.id !== attachment.id))
+
+      // Also update commentAttachments state if it was a comment attachment
+      if (attachment.source === 'comment' && attachment.comment_id) {
+        setCommentAttachments(prev => {
+          const updated = { ...prev }
+          if (updated[attachment.comment_id]) {
+            updated[attachment.comment_id] = updated[attachment.comment_id].filter(a => a.id !== attachment.id)
+          }
+          return updated
+        })
+      }
     } catch (error) {
       console.error('Error deleting attachment:', error)
       alert('Failed to delete file')
@@ -550,8 +612,8 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
           {activeTab === 'files' && (
             <>
-              {/* Upload Button */}
-              <div className="p-4 border-b border-gray-200">
+              {/* Upload and Download All Buttons */}
+              <div className="p-4 border-b border-gray-200 space-y-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -579,6 +641,19 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                     </>
                   )}
                 </button>
+
+                {/* Download All Button */}
+                {attachments.length > 0 && (
+                  <button
+                    onClick={handleDownloadAll}
+                    className="w-full px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download All ({attachments.length} files)
+                  </button>
+                )}
               </div>
 
               {/* Files List */}
@@ -606,9 +681,17 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                         >
                           {attachment.file_name}
                         </a>
-                        <p className="text-xs text-gray-500">
-                          {formatFileSize(attachment.file_size)} • {formatRelativeTime(attachment.created_at)}
-                        </p>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span>{formatFileSize(attachment.file_size)}</span>
+                          <span>•</span>
+                          <span>{formatRelativeTime(attachment.created_at)}</span>
+                          {attachment.source === 'comment' && (
+                            <>
+                              <span>•</span>
+                              <span className="text-blue-500">from comment</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <a
