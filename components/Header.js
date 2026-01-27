@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 
 export default function Header() {
   const router = useRouter()
+  const pathname = usePathname()
   const { profile, isAdmin } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
 
@@ -117,10 +118,12 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-br from-[#006B7D] to-[#008BA3] text-white px-6 py-6">
-        <h1 className="text-2xl font-semibold">Welcome, {userName}</h1>
-      </div>
+      {/* Welcome Banner - Only show on home page */}
+      {pathname === '/' && (
+        <div className="bg-gradient-to-br from-[#006B7D] to-[#008BA3] text-white px-6 py-6">
+          <h1 className="text-2xl font-semibold text-center">Welcome, {userName}</h1>
+        </div>
+      )}
     </header>
   )
 }
