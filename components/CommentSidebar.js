@@ -316,6 +316,8 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
           ...prev,
           [commentData.id]: uploadedAttachments
         }))
+        // Refresh the Files tab to show the new attachments
+        fetchAttachments()
       }
       setNewComment('')
       setPendingFiles([])
