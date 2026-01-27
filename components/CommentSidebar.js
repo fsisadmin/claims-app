@@ -148,8 +148,13 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
   // Handle adding files to pending list for comment
   function handleCommentFileSelect(e) {
     const files = Array.from(e.target.files || [])
+    console.log('Files selected:', files.map(f => f.name))
     if (files.length > 0) {
-      setPendingFiles(prev => [...prev, ...files])
+      setPendingFiles(prev => {
+        const updated = [...prev, ...files]
+        console.log('Pending files updated:', updated.map(f => f.name))
+        return updated
+      })
     }
     if (commentFileInputRef.current) commentFileInputRef.current.value = ''
   }
@@ -184,9 +189,12 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
       // Upload any pending files and attach to comment
       const uploadedAttachments = []
+      const failedUploads = []
       for (const file of pendingFiles) {
         const fileExt = file.name.split('.').pop()
         const fileName = `comments/${commentData.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+
+        console.log('Uploading file:', file.name, 'to path:', fileName)
 
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
@@ -194,9 +202,11 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
           .upload(fileName, file)
 
         if (uploadError) {
-          console.error('Upload error:', uploadError)
+          console.error('Upload error for', file.name, ':', uploadError)
+          failedUploads.push(file.name)
           continue
         }
+        console.log('File uploaded successfully:', file.name)
 
         // Get public URL
         const { data: urlData } = supabase.storage
@@ -235,6 +245,11 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
       setNewComment('')
       setPendingFiles([])
       textareaRef.current?.focus()
+
+      // Alert if some files failed to upload
+      if (failedUploads.length > 0) {
+        alert(`Failed to upload: ${failedUploads.join(', ')}\n\nMake sure the "attachments" storage bucket exists in Supabase.`)
+      }
     } catch (error) {
       console.error('Error submitting comment:', error)
       alert('Failed to add comment')
@@ -410,11 +425,13 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
                 {/* Pending Files Preview */}
                 {pendingFiles.length > 0 && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg space-y-1">
+                    <p className="text-xs font-medium text-blue-700 mb-1">Files to attach ({pendingFiles.length}):</p>
                     {pendingFiles.map((file, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                      <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border border-blue-100 text-sm">
                         {getFileIcon(file.type, 'w-4 h-4')}
                         <span className="flex-1 truncate text-gray-700">{file.name}</span>
+                        <span className="text-xs text-gray-400">{formatFileSize(file.size)}</span>
                         <button
                           type="button"
                           onClick={() => removePendingFile(index)}
