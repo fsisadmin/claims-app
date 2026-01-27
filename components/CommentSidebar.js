@@ -35,17 +35,50 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Get file icon based on type
+function getFileIcon(fileType, size = 'w-5 h-5') {
+  if (fileType?.startsWith('image/')) {
+    return (
+      <svg className={`${size} text-purple-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    )
+  }
+  if (fileType?.includes('pdf')) {
+    return (
+      <svg className={`${size} text-red-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    )
+  }
+  if (fileType?.includes('spreadsheet') || fileType?.includes('excel') || fileType?.includes('csv')) {
+    return (
+      <svg className={`${size} text-green-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    )
+  }
+  return (
+    <svg className={`${size} text-gray-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  )
+}
+
 export default function CommentSidebar({ entityType, entityId, organizationId }) {
   const { user, profile } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [comments, setComments] = useState([])
+  const [commentAttachments, setCommentAttachments] = useState({}) // Map of commentId -> attachments
   const [attachments, setAttachments] = useState([])
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
+  const [pendingFiles, setPendingFiles] = useState([]) // Files to attach to comment
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState('comments')
   const fileInputRef = useRef(null)
+  const commentFileInputRef = useRef(null)
   const textareaRef = useRef(null)
 
   // Fetch comments and attachments when sidebar opens
@@ -69,6 +102,25 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
       if (error) throw error
       setComments(data || [])
+
+      // Fetch attachments for all comments
+      if (data && data.length > 0) {
+        const commentIds = data.map(c => c.id)
+        const { data: attachData, error: attachError } = await supabase
+          .from('comment_attachments')
+          .select('*')
+          .in('comment_id', commentIds)
+
+        if (!attachError && attachData) {
+          // Group attachments by comment_id
+          const grouped = {}
+          attachData.forEach(a => {
+            if (!grouped[a.comment_id]) grouped[a.comment_id] = []
+            grouped[a.comment_id].push(a)
+          })
+          setCommentAttachments(grouped)
+        }
+      }
     } catch (error) {
       console.error('Error fetching comments:', error)
     } finally {
@@ -93,19 +145,34 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     }
   }
 
+  // Handle adding files to pending list for comment
+  function handleCommentFileSelect(e) {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      setPendingFiles(prev => [...prev, ...files])
+    }
+    if (commentFileInputRef.current) commentFileInputRef.current.value = ''
+  }
+
+  // Remove file from pending list
+  function removePendingFile(index) {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
   async function handleSubmitComment(e) {
     e.preventDefault()
-    if (!newComment.trim() || !user || !profile) return
+    if ((!newComment.trim() && pendingFiles.length === 0) || !user || !profile) return
 
     setSubmitting(true)
     try {
-      const { data, error } = await supabase
+      // Create the comment
+      const { data: commentData, error: commentError } = await supabase
         .from('comments')
         .insert({
           entity_type: entityType,
           entity_id: entityId,
           organization_id: organizationId,
-          content: newComment.trim(),
+          content: newComment.trim() || '(Attached files)',
           author_id: user.id,
           author_name: profile.full_name || profile.email,
           author_email: profile.email,
@@ -113,10 +180,60 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
         .select()
         .single()
 
-      if (error) throw error
+      if (commentError) throw commentError
 
-      setComments(prev => [data, ...prev])
+      // Upload any pending files and attach to comment
+      const uploadedAttachments = []
+      for (const file of pendingFiles) {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `comments/${commentData.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(fileName, file)
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError)
+          continue
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(fileName)
+
+        // Save attachment record
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('comment_attachments')
+          .insert({
+            comment_id: commentData.id,
+            organization_id: organizationId,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            file_url: urlData.publicUrl,
+            storage_path: fileName,
+            uploaded_by: user.id,
+          })
+          .select()
+          .single()
+
+        if (!attachmentError && attachmentData) {
+          uploadedAttachments.push(attachmentData)
+        }
+      }
+
+      // Update state
+      setComments(prev => [commentData, ...prev])
+      if (uploadedAttachments.length > 0) {
+        setCommentAttachments(prev => ({
+          ...prev,
+          [commentData.id]: uploadedAttachments
+        }))
+      }
       setNewComment('')
+      setPendingFiles([])
       textareaRef.current?.focus()
     } catch (error) {
       console.error('Error submitting comment:', error)
@@ -127,9 +244,16 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
   }
 
   async function handleDeleteComment(commentId) {
-    if (!confirm('Delete this comment?')) return
+    if (!confirm('Delete this comment and its attachments?')) return
 
     try {
+      // Delete attachments from storage first
+      const attachs = commentAttachments[commentId] || []
+      for (const attach of attachs) {
+        await supabase.storage.from('attachments').remove([attach.storage_path])
+      }
+
+      // Delete comment (cascades to comment_attachments)
       const { error } = await supabase
         .from('comments')
         .delete()
@@ -137,6 +261,11 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
       if (error) throw error
       setComments(prev => prev.filter(c => c.id !== commentId))
+      setCommentAttachments(prev => {
+        const newMap = { ...prev }
+        delete newMap[commentId]
+        return newMap
+      })
     } catch (error) {
       console.error('Error deleting comment:', error)
       alert('Failed to delete comment')
@@ -150,23 +279,19 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     setUploading(true)
     try {
       for (const file of files) {
-        // Create unique file path
         const fileExt = file.name.split('.').pop()
         const fileName = `${entityType}/${entityId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
 
-        // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('attachments')
           .upload(fileName, file)
 
         if (uploadError) throw uploadError
 
-        // Get public URL
         const { data: urlData } = supabase.storage
           .from('attachments')
           .getPublicUrl(fileName)
 
-        // Save attachment record
         const { data: attachmentData, error: attachmentError } = await supabase
           .from('entity_attachments')
           .insert({
@@ -200,14 +325,8 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     if (!confirm(`Delete "${attachment.file_name}"?`)) return
 
     try {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('attachments')
-        .remove([attachment.storage_path])
+      await supabase.storage.from('attachments').remove([attachment.storage_path])
 
-      if (storageError) console.error('Storage delete error:', storageError)
-
-      // Delete record
       const { error } = await supabase
         .from('entity_attachments')
         .delete()
@@ -221,47 +340,17 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     }
   }
 
-  // Get file icon based on type
-  function getFileIcon(fileType) {
-    if (fileType?.startsWith('image/')) {
-      return (
-        <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      )
-    }
-    if (fileType?.includes('pdf')) {
-      return (
-        <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-        </svg>
-      )
-    }
-    if (fileType?.includes('spreadsheet') || fileType?.includes('excel') || fileType?.includes('csv')) {
-      return (
-        <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      )
-    }
-    return (
-      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
-  }
-
   return (
     <>
-      {/* Toggle Button - Fixed on left side */}
+      {/* Toggle Button - Fixed on RIGHT side */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-[#006B7D] hover:bg-[#008BA3] text-white p-2 rounded-r-lg shadow-lg transition-all ${isOpen ? 'left-80' : 'left-0'}`}
+        className={`fixed top-1/2 -translate-y-1/2 z-40 bg-[#006B7D] hover:bg-[#008BA3] text-white p-2 shadow-lg transition-all ${isOpen ? 'right-80 rounded-l-lg' : 'right-0 rounded-l-lg'}`}
         title={isOpen ? 'Close sidebar' : 'Open comments & files'}
       >
         {isOpen ? (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
           </svg>
         ) : (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,9 +359,9 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
         )}
       </button>
 
-      {/* Sidebar */}
+      {/* Sidebar - Fixed on RIGHT side, below header */}
       <div
-        className={`fixed left-0 top-0 h-full w-80 bg-white shadow-xl z-30 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed right-0 top-16 h-[calc(100vh-4rem)] w-80 bg-white shadow-xl z-30 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* Header */}
         <div className="bg-[#006B7D] text-white p-4">
@@ -308,7 +397,7 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
         <div className="flex flex-col h-[calc(100%-140px)]">
           {activeTab === 'comments' && (
             <>
-              {/* Comment Input */}
+              {/* Comment Input with File Attachment */}
               <form onSubmit={handleSubmitComment} className="p-4 border-b border-gray-200">
                 <textarea
                   ref={textareaRef}
@@ -318,10 +407,52 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900 placeholder-gray-500"
                 />
-                <div className="mt-2 flex justify-end">
+
+                {/* Pending Files Preview */}
+                {pendingFiles.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {pendingFiles.map((file, index) => (
+                      <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                        {getFileIcon(file.type, 'w-4 h-4')}
+                        <span className="flex-1 truncate text-gray-700">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => removePendingFile(index)}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-2 flex items-center justify-between">
+                  {/* Attach File Button */}
+                  <input
+                    ref={commentFileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleCommentFileSelect}
+                    className="hidden"
+                    accept="*/*"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => commentFileInputRef.current?.click()}
+                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-[#006B7D] transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                    Attach
+                  </button>
+
                   <button
                     type="submit"
-                    disabled={!newComment.trim() || submitting}
+                    disabled={(!newComment.trim() && pendingFiles.length === 0) || submitting}
                     className="px-4 py-1.5 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Posting...' : 'Post'}
@@ -361,6 +492,25 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                           <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
                             {comment.content}
                           </p>
+
+                          {/* Comment Attachments */}
+                          {commentAttachments[comment.id]?.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {commentAttachments[comment.id].map(attach => (
+                                <a
+                                  key={attach.id}
+                                  href={attach.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                                >
+                                  {getFileIcon(attach.file_type, 'w-4 h-4')}
+                                  <span className="flex-1 text-xs text-gray-700 truncate">{attach.file_name}</span>
+                                  <span className="text-xs text-gray-400">{formatFileSize(attach.file_size)}</span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         {comment.author_id === user?.id && (
                           <button
