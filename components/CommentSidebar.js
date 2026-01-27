@@ -177,13 +177,33 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
     }
   }
 
+  // Get a fresh signed URL for a file (for private bucket)
+  async function getSignedUrl(storagePath) {
+    const { data, error } = await supabase.storage
+      .from('attachments')
+      .createSignedUrl(storagePath, 60 * 60) // 1 hour expiry for downloads
+
+    if (error) {
+      console.error('Error getting signed URL:', error)
+      return null
+    }
+    return data.signedUrl
+  }
+
   // Download all files as individual downloads
   async function handleDownloadAll() {
     if (attachments.length === 0) return
 
     for (const attachment of attachments) {
+      // Get fresh signed URL for download
+      const url = await getSignedUrl(attachment.storage_path)
+      if (!url) {
+        console.error('Failed to get download URL for:', attachment.file_name)
+        continue
+      }
+
       const link = document.createElement('a')
-      link.href = attachment.file_url
+      link.href = url
       link.download = attachment.file_name
       link.target = '_blank'
       document.body.appendChild(link)
@@ -257,10 +277,16 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
         }
         console.log('File uploaded successfully:', file.name)
 
-        // Get public URL
-        const { data: urlData } = supabase.storage
+        // Get signed URL (for private bucket - expires in 1 year)
+        const { data: urlData, error: urlError } = await supabase.storage
           .from('attachments')
-          .getPublicUrl(fileName)
+          .createSignedUrl(fileName, 60 * 60 * 24 * 365) // 1 year expiry
+
+        if (urlError) {
+          console.error('Error creating signed URL:', urlError)
+          failedUploads.push(file.name)
+          continue
+        }
 
         // Save attachment record
         const { data: attachmentData, error: attachmentError } = await supabase
@@ -271,7 +297,7 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
             file_name: file.name,
             file_type: file.type,
             file_size: file.size,
-            file_url: urlData.publicUrl,
+            file_url: urlData.signedUrl,
             storage_path: fileName,
             uploaded_by: user.id,
           })
@@ -352,9 +378,12 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
 
         if (uploadError) throw uploadError
 
-        const { data: urlData } = supabase.storage
+        // Get signed URL (for private bucket - expires in 1 year)
+        const { data: urlData, error: urlError } = await supabase.storage
           .from('attachments')
-          .getPublicUrl(fileName)
+          .createSignedUrl(fileName, 60 * 60 * 24 * 365) // 1 year expiry
+
+        if (urlError) throw urlError
 
         const { data: attachmentData, error: attachmentError } = await supabase
           .from('entity_attachments')
@@ -365,7 +394,7 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
             file_name: file.name,
             file_type: file.type,
             file_size: file.size,
-            file_url: urlData.publicUrl,
+            file_url: urlData.signedUrl,
             storage_path: fileName,
             uploaded_by: user.id,
             uploaded_by_name: profile.full_name || profile.email,
@@ -576,17 +605,18 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                           {commentAttachments[comment.id]?.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {commentAttachments[comment.id].map(attach => (
-                                <a
+                                <button
                                   key={attach.id}
-                                  href={attach.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                                  onClick={async () => {
+                                    const url = await getSignedUrl(attach.storage_path)
+                                    if (url) window.open(url, '_blank')
+                                  }}
+                                  className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors w-full text-left"
                                 >
                                   {getFileIcon(attach.file_type, 'w-4 h-4')}
                                   <span className="flex-1 text-xs text-gray-700 truncate">{attach.file_name}</span>
                                   <span className="text-xs text-gray-400">{formatFileSize(attach.file_size)}</span>
-                                </a>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -673,14 +703,15 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                     >
                       {getFileIcon(attachment.file_type)}
                       <div className="flex-1 min-w-0">
-                        <a
-                          href={attachment.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-gray-900 hover:text-[#006B7D] truncate block"
+                        <button
+                          onClick={async () => {
+                            const url = await getSignedUrl(attachment.storage_path)
+                            if (url) window.open(url, '_blank')
+                          }}
+                          className="text-sm font-medium text-gray-900 hover:text-[#006B7D] truncate block text-left"
                         >
                           {attachment.file_name}
-                        </a>
+                        </button>
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                           <span>{formatFileSize(attachment.file_size)}</span>
                           <span>•</span>
@@ -694,16 +725,25 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <a
-                          href={attachment.file_url}
-                          download={attachment.file_name}
+                        <button
+                          onClick={async () => {
+                            const url = await getSignedUrl(attachment.storage_path)
+                            if (url) {
+                              const link = document.createElement('a')
+                              link.href = url
+                              link.download = attachment.file_name
+                              document.body.appendChild(link)
+                              link.click()
+                              document.body.removeChild(link)
+                            }
+                          }}
                           className="p-1.5 text-gray-400 hover:text-[#006B7D] transition-colors"
                           title="Download"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                           </svg>
-                        </a>
+                        </button>
                         {attachment.uploaded_by === user?.id && (
                           <button
                             onClick={() => handleDeleteAttachment(attachment)}
