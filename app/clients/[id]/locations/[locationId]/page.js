@@ -1,0 +1,657 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
+import Header from '@/components/Header'
+import CommentSidebar from '@/components/CommentSidebar'
+import { supabase } from '@/lib/supabase'
+import { useLocation, useClient } from '@/hooks'
+
+export default function LocationDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const { user, profile, loading: authLoading } = useAuth()
+  const [isEditing, setIsEditing] = useState(false)
+  const [editData, setEditData] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('lenders')
+
+  // Use SWR hooks for cached data fetching
+  const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
+  const { client } = useClient(params.id, profile?.organization_id)
+
+  // Sync editData with location when location changes
+  useEffect(() => {
+    if (location) {
+      setEditData(location)
+    }
+  }, [location])
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login')
+    }
+  }, [user, authLoading, router])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      // Security: Include organization_id in the update query
+      const { error } = await supabase
+        .from('locations')
+        .update(editData)
+        .eq('id', params.locationId)
+        .eq('organization_id', profile.organization_id)
+
+      if (error) throw error
+      // Update the SWR cache with new data
+      mutateLocation(editData, false)
+      setIsEditing(false)
+    } catch (error) {
+      console.error('Error saving location:', error)
+      alert('Failed to save changes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleInputChange(field, value) {
+    setEditData(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Risk assessment color coding
+  function getRiskColor(risk) {
+    if (!risk) return 'text-gray-500'
+    const lower = risk.toLowerCase()
+    if (lower.includes('very low') || lower === 'no') return 'text-green-600'
+    if (lower.includes('relatively low') || lower.includes('low')) return 'text-green-500'
+    if (lower.includes('moderate')) return 'text-yellow-600'
+    if (lower.includes('relatively high')) return 'text-orange-500'
+    if (lower.includes('high') || lower.includes('very high') || lower === 'yes') return 'text-red-600'
+    return 'text-gray-700'
+  }
+
+  if (authLoading || locationLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="max-w-5xl mx-auto px-6 py-8">
+          <div className="text-center py-16">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
+            <p className="mt-4 text-gray-600 font-medium">Loading location...</p>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  if (!user || !location) {
+    return null
+  }
+
+  // SOV Single Line columns
+  const sovColumns = [
+    { key: 'entity_name', label: 'Entity Name', width: 150 },
+    { key: 'location_name', label: 'Location Name', width: 150 },
+    { key: 'street_address', label: 'Street Address', width: 180 },
+    { key: 'city', label: 'City', width: 120 },
+    { key: 'state', label: 'State', width: 80 },
+    { key: 'zip', label: 'Zip', width: 80 },
+    { key: 'county', label: 'County', width: 120 },
+    { key: 'num_buildings', label: '# Bldgs', width: 80 },
+    { key: 'num_units', label: '# Units', width: 80 },
+    { key: 'square_footage', label: 'Sq Ft', width: 100 },
+    { key: 'construction_description', label: 'Construction', width: 150 },
+    { key: 'orig_year_built', label: 'Year Built', width: 100 },
+    { key: 'real_property_value', label: 'Real Property $', width: 130 },
+    { key: 'personal_property_value', label: 'Personal Property $', width: 140 },
+    { key: 'total_tiv', label: 'Total TIV', width: 120 },
+  ]
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Header />
+
+      {/* Comment Sidebar */}
+      <CommentSidebar
+        entityType="location"
+        entityId={params.locationId}
+        organizationId={profile.organization_id}
+      />
+
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <button
+            onClick={() => router.push(`/clients/${params.id}`)}
+            className="text-[#006B7D] hover:text-[#008BA3] font-medium flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to {client?.name || 'Client'}
+          </button>
+        </div>
+
+        {/* Location Details Section */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-[#006B7D] mb-4">Location Details</h1>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            {isEditing ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Location Name</label>
+                  <input
+                    type="text"
+                    value={editData.location_name || ''}
+                    onChange={(e) => handleInputChange('location_name', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Entity Name</label>
+                  <input
+                    type="text"
+                    value={editData.entity_name || ''}
+                    onChange={(e) => handleInputChange('entity_name', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                  <input
+                    type="text"
+                    value={editData.street_address || ''}
+                    onChange={(e) => handleInputChange('street_address', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={editData.city || ''}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input
+                      type="text"
+                      value={editData.state || ''}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Zip</label>
+                    <input
+                      type="text"
+                      value={editData.zip || ''}
+                      onChange={(e) => handleInputChange('zip', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setIsEditing(false); setEditData(location) }}
+                    className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">{location.location_name || location.street_address}</h2>
+                  {location.entity_name && (
+                    <p className="text-gray-600">{location.entity_name}</p>
+                  )}
+                  <p className="text-gray-600">{location.street_address}</p>
+                  <p className="text-gray-600">
+                    {[location.city, location.state, location.zip].filter(Boolean).join(', ')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Edit
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Location Risk Assessment */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-[#006B7D] mb-4">Location Risk Assessment</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <tbody className="divide-y divide-gray-100">
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600 w-48">Tier 1 Wind</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.tier_1_wind)}`}>
+                    {location.tier_1_wind || '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600">Coastal Flooding</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.coastal_flooding_risk)}`}>
+                    {location.coastal_flooding_risk || location.coastal_flooding || '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600">Wildfire</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.wildfire_risk)}`}>
+                    {location.wildfire_risk || location.wildfire || '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600">Earthquake</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.earthquake_risk)}`}>
+                    {location.earthquake_risk || location.earthquake || '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600">Tornado</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.tornado_risk)}`}>
+                    {location.tornado_risk || location.tornado || '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-sm text-gray-600">Flood Zone</td>
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.flood_zone)}`}>
+                    {location.flood_zone || '-'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* SOV Single Line */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-[#006B7D] mb-1">SOV Single Line</h2>
+          <p className="text-sm text-gray-500 mb-4">Edit location details here</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {sovColumns.map(col => (
+                      <th
+                        key={col.key}
+                        className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
+                        style={{ minWidth: col.width }}
+                      >
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="hover:bg-gray-50">
+                    {sovColumns.map(col => (
+                      <td
+                        key={col.key}
+                        className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap border-r border-gray-100 last:border-r-0"
+                      >
+                        {col.key.includes('value') || col.key === 'total_tiv'
+                          ? location[col.key]
+                            ? `$${Number(location[col.key]).toLocaleString()}`
+                            : '-'
+                          : location[col.key] || '-'
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs Section */}
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Tab Headers */}
+            <div className="border-b border-gray-200">
+              <nav className="flex">
+                <button
+                  onClick={() => setActiveTab('lenders')}
+                  className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === 'lenders'
+                      ? 'border-[#006B7D] text-[#006B7D]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    Lender Info
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('claims')}
+                  className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === 'claims'
+                      ? 'border-[#006B7D] text-[#006B7D]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Claims
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('policies')}
+                  className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === 'policies'
+                      ? 'border-[#006B7D] text-[#006B7D]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    Policies
+                  </div>
+                </button>
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6">
+              {/* Lender Info Tab */}
+              {activeTab === 'lenders' && (
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900">Lender Information</h3>
+                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
+                      Add Lender
+                    </button>
+                  </div>
+
+                  {/* Lender Details */}
+                  <div className="space-y-4 mb-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Lenders</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.lenders || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Lender Name Rollup</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.lender_name_rollup || '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Certificate Recipients */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-md font-semibold text-gray-900">Certificate Recipients</h4>
+                      <button className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                        Add Recipient
+                      </button>
+                    </div>
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                      <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <p className="text-sm">No certificate recipients found.</p>
+                    </div>
+                  </div>
+
+                  {/* EPI Info */}
+                  <div className="border-t border-gray-200 pt-6 mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">EPI Certificate Info</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">EPI Certificate</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.epi_certificate || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">EPI Certificate To Use</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.epi_certificate_to_use_name || location.epi_certificate_to_use || '-'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-600 mb-1">EPI Additional Remarks</label>
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900 min-h-[60px]">
+                        {location.location_epi_additional_remarks || 'No remarks'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* COI Info */}
+                  <div className="border-t border-gray-200 pt-6 mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">COI Certificate Info</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">COI Certificate</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.coi_certificate || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">COI Certificate To Use</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.coi_certificate_to_use || '-'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-600 mb-1">COI Additional Remarks</label>
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900 min-h-[60px]">
+                        {location.coi_location_specific_additional_remarks || 'No remarks'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Claims Tab */}
+              {activeTab === 'claims' && (
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900">Claims History</h3>
+                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
+                      Add Claim
+                    </button>
+                  </div>
+
+                  {/* Claims Summary */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 mb-1">Open Claims</p>
+                      <p className="text-2xl font-bold text-gray-900">{location.open_claim_rollup || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 mb-1">Total Open Claims Value</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {location.total_open_claims_rollup
+                          ? `$${Number(location.total_open_claims_rollup).toLocaleString()}`
+                          : '$0'
+                        }
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 mb-1">Loss Run Summary</p>
+                      <p className="text-sm font-medium text-gray-900">{location.loss_run_summary || '-'}</p>
+                    </div>
+                  </div>
+
+                  {/* 5-Year Incurred */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-blue-100 rounded-lg p-4 border border-blue-200">
+                      <p className="text-sm font-medium text-blue-800 mb-1">Total Incurred (5 Years) - Property</p>
+                      <p className="text-2xl font-bold text-blue-900">
+                        {location.total_incurred_five_years_prop
+                          ? `$${Number(location.total_incurred_five_years_prop).toLocaleString()}`
+                          : '$0'
+                        }
+                      </p>
+                    </div>
+                    <div className="bg-emerald-100 rounded-lg p-4 border border-emerald-200">
+                      <p className="text-sm font-medium text-emerald-800 mb-1">Total Incurred (5 Years) - GL</p>
+                      <p className="text-2xl font-bold text-emerald-900">
+                        {location.total_incurred_five_years_gl
+                          ? `$${Number(location.total_incurred_five_years_gl).toLocaleString()}`
+                          : '$0'
+                        }
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Claims List */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">Claims List</h4>
+                    {location.claims ? (
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                        {location.claims}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-sm">No claims found for this location.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Policies Tab */}
+              {activeTab === 'policies' && (
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900">Policy Information</h3>
+                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
+                      Add Policy
+                    </button>
+                  </div>
+
+                  {/* Policy Details */}
+                  <div className="space-y-4 mb-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Policy</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.policy || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Policy ID</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.policy_id || '-'}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Policies (All)</label>
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                        {location.policies || '-'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">25-26 Policies</label>
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                        {location.policies_25_26 || '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Coverage */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">Coverage Details</h4>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                        {location.coverage || 'No coverage details available'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Deductibles */}
+                  <div className="border-t border-gray-200 pt-6 mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">Deductibles</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Deductible</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.deductible || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">NWS Deductible</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.nws_deductible || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Wind/Hail Deductible</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.wind_hail_deductible || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Self Insured Retention</label>
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                          {location.self_insured_retention || '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Documents */}
+                  <div className="border-t border-gray-200 pt-6 mt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">Documents</h4>
+                    {location.documents_for_location ? (
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                        {location.documents_for_location}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-sm">No documents found for this location.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}

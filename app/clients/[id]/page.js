@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
-import { supabase } from '@/lib/supabase'
+import LocationsTable from '@/components/LocationsTable'
+import CommentSidebar from '@/components/CommentSidebar'
+import { useClient, useLocations } from '@/hooks'
 
 // Function to generate initials from company name
 function getInitials(name) {
@@ -42,9 +44,13 @@ export default function ClientDetailPage() {
   const router = useRouter()
   const params = useParams()
   const { user, profile, loading: authLoading } = useAuth()
-  const [client, setClient] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [claims, setClaims] = useState([])
+  const [claimsLoading, setClaimsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('locations')
+
+  // Use SWR hooks for cached data fetching
+  const { client, isLoading: clientLoading } = useClient(params.id, profile?.organization_id)
+  const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -53,38 +59,11 @@ export default function ClientDetailPage() {
     }
   }, [user, authLoading, router])
 
-  // Fetch client details
-  useEffect(() => {
-    if (user && profile && params.id) {
-      fetchClient()
-    }
-  }, [user, profile, params.id])
-
-  async function fetchClient() {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', params.id)
-        .eq('organization_id', profile.organization_id)
-        .single()
-
-      if (error) throw error
-      setClient(data)
-    } catch (error) {
-      console.error('Error fetching client:', error)
-      setError(error.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (authLoading || loading) {
+  if (authLoading || clientLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Header />
-        <main className="max-w-4xl mx-auto px-6 py-8">
+        <main className="max-w-7xl mx-auto px-6 py-8">
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
             <p className="mt-4 text-gray-600 font-medium">Loading client...</p>
@@ -105,7 +84,14 @@ export default function ClientDetailPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Header />
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      {/* Comment Sidebar */}
+      <CommentSidebar
+        entityType="client"
+        entityId={params.id}
+        organizationId={profile.organization_id}
+      />
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Back Button */}
         <div className="mb-6">
           <button
@@ -231,10 +217,95 @@ export default function ClientDetailPage() {
           </div>
         </div>
 
-        {/* Claims Section - Will be added after you provide the screenshot */}
-        <div className="bg-white rounded-3xl shadow-md p-8">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Claims</h2>
-          <p className="text-gray-600">Claims section coming soon...</p>
+        {/* Tabs Section */}
+        <div className="bg-white rounded-3xl shadow-md overflow-hidden">
+          {/* Tab Headers */}
+          <div className="border-b border-gray-200">
+            <nav className="flex">
+              <button
+                onClick={() => setActiveTab('locations')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'locations'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Locations
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {locations.length}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('claims')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'claims'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Claims
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {claims.length}
+                  </span>
+                </div>
+              </button>
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-8">
+            {activeTab === 'locations' && (
+              <>
+                {locationsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading locations...</p>
+                  </div>
+                ) : (
+                  <LocationsTable
+                    locations={locations}
+                    clientId={params.id}
+                    organizationId={profile.organization_id}
+                    onRefresh={refreshLocations}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'claims' && (
+              <>
+                {claimsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading claims...</p>
+                  </div>
+                ) : claims.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p>No claims found for this client.</p>
+                    <p className="text-sm mt-2">Claims will appear here once added.</p>
+                  </div>
+                ) : (
+                  <div className="text-gray-600">
+                    {/* Claims table will go here */}
+                    <p>Claims table coming soon...</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </main>
     </div>

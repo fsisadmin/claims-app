@@ -1,0 +1,487 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+
+// Format relative time
+function formatRelativeTime(dateString) {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Get initials from name
+function getInitials(name) {
+  if (!name) return '?'
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+}
+
+// Format file size
+function formatFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export default function CommentSidebar({ entityType, entityId, organizationId }) {
+  const { user, profile } = useAuth()
+  const [isOpen, setIsOpen] = useState(false)
+  const [comments, setComments] = useState([])
+  const [attachments, setAttachments] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [activeTab, setActiveTab] = useState('comments')
+  const fileInputRef = useRef(null)
+  const textareaRef = useRef(null)
+
+  // Fetch comments and attachments when sidebar opens
+  useEffect(() => {
+    if (isOpen && entityId && organizationId) {
+      fetchComments()
+      fetchAttachments()
+    }
+  }, [isOpen, entityId, organizationId])
+
+  async function fetchComments() {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setComments(data || [])
+    } catch (error) {
+      console.error('Error fetching comments:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchAttachments() {
+    try {
+      const { data, error } = await supabase
+        .from('entity_attachments')
+        .select('*')
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setAttachments(data || [])
+    } catch (error) {
+      console.error('Error fetching attachments:', error)
+    }
+  }
+
+  async function handleSubmitComment(e) {
+    e.preventDefault()
+    if (!newComment.trim() || !user || !profile) return
+
+    setSubmitting(true)
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .insert({
+          entity_type: entityType,
+          entity_id: entityId,
+          organization_id: organizationId,
+          content: newComment.trim(),
+          author_id: user.id,
+          author_name: profile.full_name || profile.email,
+          author_email: profile.email,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setComments(prev => [data, ...prev])
+      setNewComment('')
+      textareaRef.current?.focus()
+    } catch (error) {
+      console.error('Error submitting comment:', error)
+      alert('Failed to add comment')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDeleteComment(commentId) {
+    if (!confirm('Delete this comment?')) return
+
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .delete()
+        .eq('id', commentId)
+
+      if (error) throw error
+      setComments(prev => prev.filter(c => c.id !== commentId))
+    } catch (error) {
+      console.error('Error deleting comment:', error)
+      alert('Failed to delete comment')
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    try {
+      for (const file of files) {
+        // Create unique file path
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${entityType}/${entityId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(fileName, file)
+
+        if (uploadError) throw uploadError
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(fileName)
+
+        // Save attachment record
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('entity_attachments')
+          .insert({
+            entity_type: entityType,
+            entity_id: entityId,
+            organization_id: organizationId,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            file_url: urlData.publicUrl,
+            storage_path: fileName,
+            uploaded_by: user.id,
+            uploaded_by_name: profile.full_name || profile.email,
+          })
+          .select()
+          .single()
+
+        if (attachmentError) throw attachmentError
+        setAttachments(prev => [attachmentData, ...prev])
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      alert('Failed to upload file: ' + error.message)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleDeleteAttachment(attachment) {
+    if (!confirm(`Delete "${attachment.file_name}"?`)) return
+
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('attachments')
+        .remove([attachment.storage_path])
+
+      if (storageError) console.error('Storage delete error:', storageError)
+
+      // Delete record
+      const { error } = await supabase
+        .from('entity_attachments')
+        .delete()
+        .eq('id', attachment.id)
+
+      if (error) throw error
+      setAttachments(prev => prev.filter(a => a.id !== attachment.id))
+    } catch (error) {
+      console.error('Error deleting attachment:', error)
+      alert('Failed to delete file')
+    }
+  }
+
+  // Get file icon based on type
+  function getFileIcon(fileType) {
+    if (fileType?.startsWith('image/')) {
+      return (
+        <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
+    }
+    if (fileType?.includes('pdf')) {
+      return (
+        <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      )
+    }
+    if (fileType?.includes('spreadsheet') || fileType?.includes('excel') || fileType?.includes('csv')) {
+      return (
+        <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )
+    }
+    return (
+      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    )
+  }
+
+  return (
+    <>
+      {/* Toggle Button - Fixed on left side */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-[#006B7D] hover:bg-[#008BA3] text-white p-2 rounded-r-lg shadow-lg transition-all ${isOpen ? 'left-80' : 'left-0'}`}
+        title={isOpen ? 'Close sidebar' : 'Open comments & files'}
+      >
+        {isOpen ? (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        ) : (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        )}
+      </button>
+
+      {/* Sidebar */}
+      <div
+        className={`fixed left-0 top-0 h-full w-80 bg-white shadow-xl z-30 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        {/* Header */}
+        <div className="bg-[#006B7D] text-white p-4">
+          <h2 className="font-semibold text-lg">Activity</h2>
+          <p className="text-sm text-white/70">Comments & Files</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('comments')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'comments'
+                ? 'text-[#006B7D] border-b-2 border-[#006B7D]'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Comments ({comments.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'files'
+                ? 'text-[#006B7D] border-b-2 border-[#006B7D]'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Files ({attachments.length})
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex flex-col h-[calc(100%-140px)]">
+          {activeTab === 'comments' && (
+            <>
+              {/* Comment Input */}
+              <form onSubmit={handleSubmitComment} className="p-4 border-b border-gray-200">
+                <textarea
+                  ref={textareaRef}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900 placeholder-gray-500"
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={!newComment.trim() || submitting}
+                    className="px-4 py-1.5 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Posting...' : 'Post'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Comments List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {loading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#006B7D] mx-auto"></div>
+                  </div>
+                ) : comments.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <p className="text-sm">No comments yet</p>
+                  </div>
+                ) : (
+                  comments.map(comment => (
+                    <div key={comment.id} className="group">
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#006B7D] text-white flex items-center justify-center text-xs font-medium flex-shrink-0">
+                          {getInitials(comment.author_name)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 truncate">
+                              {comment.author_name}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {formatRelativeTime(comment.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
+                            {comment.content}
+                          </p>
+                        </div>
+                        {comment.author_id === user?.id && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'files' && (
+            <>
+              {/* Upload Button */}
+              <div className="p-4 border-b border-gray-200">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  accept="*/*"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-[#006B7D] hover:text-[#006B7D] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Upload Files
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Files List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {attachments.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-sm">No files uploaded</p>
+                  </div>
+                ) : (
+                  attachments.map(attachment => (
+                    <div
+                      key={attachment.id}
+                      className="group flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      {getFileIcon(attachment.file_type)}
+                      <div className="flex-1 min-w-0">
+                        <a
+                          href={attachment.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-gray-900 hover:text-[#006B7D] truncate block"
+                        >
+                          {attachment.file_name}
+                        </a>
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(attachment.file_size)} • {formatRelativeTime(attachment.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <a
+                          href={attachment.file_url}
+                          download={attachment.file_name}
+                          className="p-1.5 text-gray-400 hover:text-[#006B7D] transition-colors"
+                          title="Download"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </a>
+                        {attachment.uploaded_by === user?.id && (
+                          <button
+                            onClick={() => handleDeleteAttachment(attachment)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Overlay when sidebar is open */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-20"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+    </>
+  )
+}
