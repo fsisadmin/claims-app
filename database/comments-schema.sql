@@ -1,13 +1,13 @@
 -- Comments table schema
 -- Run this in the Supabase SQL Editor
 
--- Comments table for clients and locations
+-- Comments table for clients, locations, and claims
 CREATE TABLE IF NOT EXISTS comments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
 
-    -- Polymorphic reference - can be attached to client or location
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('client', 'location')),
+    -- Polymorphic reference - can be attached to client, location, or claim
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('client', 'location', 'claim')),
     entity_id UUID NOT NULL,
 
     -- Comment content
@@ -44,13 +44,13 @@ CREATE TABLE IF NOT EXISTS comment_attachments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Standalone attachments (files attached directly to client/location, not to a comment)
+-- Standalone attachments (files attached directly to client/location/claim, not to a comment)
 CREATE TABLE IF NOT EXISTS entity_attachments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
 
     -- Polymorphic reference
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('client', 'location')),
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('client', 'location', 'claim')),
     entity_id UUID NOT NULL,
 
     -- File info

@@ -45,23 +45,41 @@ export default function Header() {
             />
           </Link>
 
-          {/* Admin Navigation */}
-          {isAdmin && (
-            <nav className="flex items-center gap-2">
-              <Link
-                href="/admin/users"
-                className="px-4 py-2 text-[#006B7D] hover:bg-gray-100 rounded-full text-sm font-medium transition-all"
-              >
-                Users
-              </Link>
-              <Link
-                href="/admin/add-user"
-                className="px-4 py-2 text-[#006B7D] hover:bg-gray-100 rounded-full text-sm font-medium transition-all"
-              >
-                Add User
-              </Link>
-            </nav>
-          )}
+          {/* Main Navigation */}
+          <nav className="flex items-center gap-2">
+            <Link
+              href="/"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                pathname === '/' ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Clients
+            </Link>
+            <Link
+              href="/claims"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                pathname.startsWith('/claims') ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Claims
+            </Link>
+            {isAdmin && (
+              <>
+                <Link
+                  href="/admin/users"
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-full text-sm font-medium transition-all"
+                >
+                  Users
+                </Link>
+                <Link
+                  href="/admin/add-user"
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-full text-sm font-medium transition-all"
+                >
+                  Add User
+                </Link>
+              </>
+            )}
+          </nav>
         </div>
 
         {/* User Actions */}
