@@ -359,6 +359,12 @@ export default function ClaimsPage() {
                       </th>
                       <th
                         className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('client_name')}
+                      >
+                        Client <SortIcon column="client_name" />
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort('coverage')}
                       >
                         Coverage <SortIcon column="coverage" />
@@ -419,7 +425,7 @@ export default function ClaimsPage() {
                   <tbody className="divide-y divide-gray-100">
                     {paginatedClaims.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="px-4 py-12 text-center text-gray-500">
+                        <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
                           No claims found. Click "New Claim" to add one.
                         </td>
                       </tr>
@@ -436,6 +442,15 @@ export default function ClaimsPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-gray-900">{claim.claimant}</td>
+                          <td className="px-4 py-3">
+                            {claim.clients ? (
+                              <span className="text-[#006B7D] hover:underline">
+                                {claim.clients.name}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-gray-600">{claim.coverage}</td>
                           <td className="px-4 py-3">
                             {claim.locations ? (
