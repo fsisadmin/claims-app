@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import LocationsTable from '@/components/LocationsTable'
+import ClaimsTable from '@/components/ClaimsTable'
 import CommentSidebar from '@/components/CommentSidebar'
 import { useClient, useLocations } from '@/hooks'
 
@@ -51,6 +53,35 @@ export default function ClientDetailPage() {
   // Use SWR hooks for cached data fetching
   const { client, isLoading: clientLoading } = useClient(params.id, profile?.organization_id)
   const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
+
+  // Fetch claims for this client
+  const fetchClaims = useCallback(async () => {
+    if (!profile?.organization_id || !params.id) return
+
+    setClaimsLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('claims')
+        .select('*')
+        .eq('organization_id', profile.organization_id)
+        .eq('client_id', params.id)
+        .order('report_date', { ascending: false })
+
+      if (error) throw error
+      setClaims(data || [])
+    } catch (error) {
+      console.error('Error fetching claims:', error)
+    } finally {
+      setClaimsLoading(false)
+    }
+  }, [profile?.organization_id, params.id])
+
+  // Fetch claims when tab changes to claims
+  useEffect(() => {
+    if (activeTab === 'claims' && user && profile) {
+      fetchClaims()
+    }
+  }, [activeTab, user, profile, fetchClaims])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -289,19 +320,11 @@ export default function ClientDetailPage() {
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
                     <p className="mt-2 text-gray-600">Loading claims...</p>
                   </div>
-                ) : claims.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p>No claims found for this client.</p>
-                    <p className="text-sm mt-2">Claims will appear here once added.</p>
-                  </div>
                 ) : (
-                  <div className="text-gray-600">
-                    {/* Claims table will go here */}
-                    <p>Claims table coming soon...</p>
-                  </div>
+                  <ClaimsTable
+                    claims={claims}
+                    clientId={params.id}
+                  />
                 )}
               </>
             )}
