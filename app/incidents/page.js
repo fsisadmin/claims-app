@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
@@ -40,7 +40,8 @@ function getColorFromName(name) {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export default function IncidentsPage() {
+// Inner component that uses useSearchParams
+function IncidentsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
@@ -294,5 +295,21 @@ export default function IncidentsPage() {
         )}
       </main>
     </div>
+  )
+}
+
+// Wrap in Suspense for useSearchParams
+export default function IncidentsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#006B7D]"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    }>
+      <IncidentsPageContent />
+    </Suspense>
   )
 }

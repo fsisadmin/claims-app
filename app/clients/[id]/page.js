@@ -49,9 +49,13 @@ export default function ClientDetailPage() {
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
   const [claims, setClaims] = useState([])
+  const [claimsCount, setClaimsCount] = useState(0)
   const [claimsLoading, setClaimsLoading] = useState(false)
+  const [claimsFetched, setClaimsFetched] = useState(false)
   const [incidents, setIncidents] = useState([])
+  const [incidentsCount, setIncidentsCount] = useState(0)
   const [incidentsLoading, setIncidentsLoading] = useState(false)
+  const [incidentsFetched, setIncidentsFetched] = useState(false)
   const [activeTab, setActiveTab] = useState('locations')
 
   // Check URL for tab param
@@ -66,9 +70,35 @@ export default function ClientDetailPage() {
   const { client, isLoading: clientLoading } = useClient(params.id, profile?.organization_id)
   const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
 
-  // Fetch claims for this client
-  const fetchClaims = useCallback(async () => {
+  // Fetch counts for tabs (fast - runs in parallel on initial load)
+  const fetchCounts = useCallback(async () => {
     if (!profile?.organization_id || !params.id) return
+
+    try {
+      // Run both count queries in parallel for speed
+      const [claimsResult, incidentsResult] = await Promise.all([
+        supabase
+          .from('claims')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', profile.organization_id)
+          .eq('client_id', params.id),
+        supabase
+          .from('incidents')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', profile.organization_id)
+          .eq('client_id', params.id)
+      ])
+
+      if (!claimsResult.error) setClaimsCount(claimsResult.count || 0)
+      if (!incidentsResult.error) setIncidentsCount(incidentsResult.count || 0)
+    } catch (error) {
+      console.error('Error fetching counts:', error)
+    }
+  }, [profile?.organization_id, params.id])
+
+  // Fetch full claims data (only when claims tab is clicked)
+  const fetchClaims = useCallback(async () => {
+    if (!profile?.organization_id || !params.id || claimsFetched) return
 
     setClaimsLoading(true)
     try {
@@ -81,16 +111,17 @@ export default function ClientDetailPage() {
 
       if (error) throw error
       setClaims(data || [])
+      setClaimsFetched(true)
     } catch (error) {
       console.error('Error fetching claims:', error)
     } finally {
       setClaimsLoading(false)
     }
-  }, [profile?.organization_id, params.id])
+  }, [profile?.organization_id, params.id, claimsFetched])
 
-  // Fetch incidents for this client
+  // Fetch full incidents data (only when incidents tab is clicked)
   const fetchIncidents = useCallback(async () => {
-    if (!profile?.organization_id || !params.id) return
+    if (!profile?.organization_id || !params.id || incidentsFetched) return
 
     setIncidentsLoading(true)
     try {
@@ -103,20 +134,30 @@ export default function ClientDetailPage() {
 
       if (error) throw error
       setIncidents(data || [])
+      setIncidentsFetched(true)
     } catch (error) {
       console.error('Error fetching incidents:', error)
     } finally {
       setIncidentsLoading(false)
     }
-  }, [profile?.organization_id, params.id])
+  }, [profile?.organization_id, params.id, incidentsFetched])
 
-  // Fetch claims and incidents on initial load (for tab counts)
+  // Fetch counts on initial load (fast)
   useEffect(() => {
     if (user && profile) {
+      fetchCounts()
+    }
+  }, [user, profile, fetchCounts])
+
+  // Fetch full data only when tab is clicked
+  useEffect(() => {
+    if (activeTab === 'claims' && user && profile && !claimsFetched) {
       fetchClaims()
+    }
+    if (activeTab === 'incidents' && user && profile && !incidentsFetched) {
       fetchIncidents()
     }
-  }, [user, profile, fetchClaims, fetchIncidents])
+  }, [activeTab, user, profile, claimsFetched, incidentsFetched, fetchClaims, fetchIncidents])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -322,7 +363,7 @@ export default function ClientDetailPage() {
                   </svg>
                   Claims
                   <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {claims.length}
+                    {claimsFetched ? claims.length : claimsCount}
                   </span>
                 </div>
               </button>
@@ -340,7 +381,7 @@ export default function ClientDetailPage() {
                   </svg>
                   Incidents
                   <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {incidents.length}
+                    {incidentsFetched ? incidents.length : incidentsCount}
                   </span>
                 </div>
               </button>
