@@ -10,17 +10,16 @@ import { useAuth } from '@/contexts/AuthContext'
 
 // Format currency
 function formatCurrency(value) {
-  if (value === null || value === undefined) return '$0.00'
+  if (value === null || value === undefined) return '0.00'
   return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value)
 }
 
 // Format date
 function formatDate(dateString) {
-  if (!dateString) return '-'
+  if (!dateString) return ''
   return new Date(dateString).toLocaleDateString('en-US', {
     month: '2-digit',
     day: '2-digit',
@@ -28,61 +27,56 @@ function formatDate(dateString) {
   })
 }
 
-// Status badge component
-function StatusBadge({ status }) {
-  const styles = {
-    OPEN: 'bg-blue-100 text-blue-800 border-blue-200',
-    CLOSED: 'bg-red-100 text-red-800 border-red-200',
-    PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
-    DENIED: 'bg-gray-100 text-gray-800 border-gray-200',
-  }
-  return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-      {status}
-    </span>
-  )
-}
-
 // Detail row component
-function DetailRow({ label, value, isLink, href }) {
+function DetailRow({ label, value, isLink, href, isCheckbox, checked }) {
   return (
-    <div className="flex py-2 border-b border-gray-100 last:border-0">
-      <div className="w-48 text-sm font-medium text-gray-500">{label}</div>
-      <div className="flex-1 text-gray-900">
-        {isLink && href ? (
+    <div className="flex py-1.5">
+      <div className="w-44 text-sm text-gray-500 flex-shrink-0">{label}:</div>
+      <div className="flex-1 text-sm text-gray-900">
+        {isCheckbox ? (
+          <input
+            type="checkbox"
+            checked={checked || false}
+            disabled
+            className="w-4 h-4 text-[#006B7D] border-gray-300 rounded"
+          />
+        ) : isLink && href ? (
           <Link href={href} className="text-[#006B7D] hover:underline">
-            {value || '-'}
+            {value || ''}
           </Link>
         ) : (
-          value || '-'
+          value || ''
         )}
       </div>
     </div>
   )
 }
 
-// Section component
-function Section({ title, children, defaultOpen = true }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
+// Financial row component
+function FinancialRow({ category, data, isExpandable = true, isNegative = false }) {
+  const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="bg-white rounded-xl shadow-sm mb-4 overflow-hidden">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 border-b border-gray-200 hover:bg-gray-100 transition-colors"
-      >
-        <h3 className="font-semibold text-gray-900">{title}</h3>
-        <svg
-          className={`w-5 h-5 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {isOpen && <div className="p-6">{children}</div>}
-    </div>
+    <tr className="border-b border-gray-100 hover:bg-gray-50">
+      <td className="py-2 px-4 text-sm text-gray-700">
+        <div className="flex items-center gap-1">
+          {isExpandable && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-[#006B7D] hover:text-[#008BA3] font-medium"
+            >
+              {expanded ? '-' : '+'}
+            </button>
+          )}
+          {!isExpandable && <span className="w-3">{isNegative ? '-' : ''}</span>}
+          <span className={isNegative ? 'text-gray-500' : ''}>{category}</span>
+        </div>
+      </td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.reserves || 0)}</td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.paid || 0)}</td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.outstanding || 0)}</td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.incurred || 0)}</td>
+    </tr>
   )
 }
 
@@ -92,11 +86,11 @@ export default function ClaimDetailPage() {
   const { user, profile, loading: authLoading } = useAuth()
 
   const [claim, setClaim] = useState(null)
+  const [financials, setFinancials] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editData, setEditData] = useState({})
-  const [saving, setSaving] = useState(false)
+  const [showFullDetails, setShowFullDetails] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
 
   // Fetch claim data
   const fetchClaim = useCallback(async () => {
@@ -117,7 +111,17 @@ export default function ClaimDetailPage() {
 
       if (error) throw error
       setClaim(data)
-      setEditData(data)
+
+      // Fetch financials
+      const { data: financialsData, error: financialsError } = await supabase
+        .from('claim_financials')
+        .select('*')
+        .eq('claim_id', params.id)
+        .order('category')
+
+      if (!financialsError) {
+        setFinancials(financialsData || [])
+      }
     } catch (error) {
       console.error('Error fetching claim:', error)
       setError(error.message)
@@ -138,62 +142,56 @@ export default function ClaimDetailPage() {
     }
   }, [user, profile, fetchClaim])
 
-  // Handle edit
-  const handleEdit = () => {
-    setEditData({ ...claim })
-    setIsEditing(true)
+  // Get financial data by category
+  const getFinancialByCategory = (category) => {
+    return financials.find(f => f.category === category) || { reserves: 0, paid: 0, outstanding: 0, incurred: 0 }
   }
 
-  // Handle cancel edit
-  const handleCancel = () => {
-    setEditData({ ...claim })
-    setIsEditing(false)
+  // Calculate totals
+  const calculateTotals = () => {
+    const positiveCategories = ['Bodily Injury', 'Expense', 'Property Damage', 'Legal', 'Other']
+    const negativeCategories = ['Recovery', 'Subrogation']
+
+    let totals = { reserves: 0, paid: 0, outstanding: 0, incurred: 0 }
+
+    positiveCategories.forEach(cat => {
+      const data = getFinancialByCategory(cat)
+      totals.reserves += parseFloat(data.reserves) || 0
+      totals.paid += parseFloat(data.paid) || 0
+      totals.outstanding += parseFloat(data.outstanding) || 0
+      totals.incurred += parseFloat(data.incurred) || 0
+    })
+
+    negativeCategories.forEach(cat => {
+      const data = getFinancialByCategory(cat)
+      totals.reserves -= parseFloat(data.reserves) || 0
+      totals.paid -= parseFloat(data.paid) || 0
+      totals.outstanding -= parseFloat(data.outstanding) || 0
+      totals.incurred -= parseFloat(data.incurred) || 0
+    })
+
+    return totals
   }
 
-  // Handle save
-  const handleSave = async () => {
-    setSaving(true)
+  // Handle close claim
+  const handleCloseClaim = async () => {
+    if (!confirm('Are you sure you want to close this claim?')) return
+
     try {
       const { error } = await supabase
         .from('claims')
         .update({
-          claim_number: editData.claim_number,
-          claimant: editData.claimant,
-          coverage: editData.coverage,
-          property_name: editData.property_name,
-          status: editData.status,
-          loss_date: editData.loss_date || null,
-          report_date: editData.report_date || null,
-          closed_date: editData.closed_date || null,
-          policy_number: editData.policy_number,
-          tpa_claim_number: editData.tpa_claim_number,
-          loss_description: editData.loss_description,
-          total_incurred: editData.total_incurred || 0,
-          total_paid: editData.total_paid || 0,
-          total_reserved: editData.total_reserved || 0,
-          deductible: editData.deductible || null,
-          sir: editData.sir || null,
-          adjuster_name: editData.adjuster_name,
-          adjuster_email: editData.adjuster_email,
-          adjuster_phone: editData.adjuster_phone,
-          attorney_name: editData.attorney_name,
-          attorney_firm: editData.attorney_firm,
-          claim_type: editData.claim_type,
-          cause_of_loss: editData.cause_of_loss,
-          notes: editData.notes,
+          status: 'CLOSED',
+          closed_date: new Date().toISOString().split('T')[0],
           last_modified_by: user.id,
         })
         .eq('id', params.id)
 
       if (error) throw error
-
-      setClaim({ ...claim, ...editData })
-      setIsEditing(false)
+      fetchClaim()
     } catch (error) {
-      console.error('Error saving claim:', error)
-      alert('Failed to save changes: ' + error.message)
-    } finally {
-      setSaving(false)
+      console.error('Error closing claim:', error)
+      alert('Failed to close claim: ' + error.message)
     }
   }
 
@@ -208,23 +206,18 @@ export default function ClaimDetailPage() {
         .eq('id', params.id)
 
       if (error) throw error
-      router.push('/claims')
+      router.push('/')
     } catch (error) {
       console.error('Error deleting claim:', error)
       alert('Failed to delete claim: ' + error.message)
     }
   }
 
-  // Handle input change
-  const handleChange = (field, value) => {
-    setEditData(prev => ({ ...prev, [field]: value }))
-  }
-
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="max-w-6xl mx-auto px-6 py-8">
+        <main className="max-w-7xl mx-auto px-6 py-8">
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
             <p className="mt-4 text-gray-600 font-medium">Loading claim...</p>
@@ -238,18 +231,18 @@ export default function ClaimDetailPage() {
 
   if (error || !claim) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="max-w-6xl mx-auto px-6 py-8">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <p className="text-red-800 font-medium">
               {error || 'Claim not found'}
             </p>
             <button
-              onClick={() => router.push('/claims')}
+              onClick={() => router.push('/')}
               className="mt-4 text-[#006B7D] hover:underline"
             >
-              Back to Claims
+              Back to Clients
             </button>
           </div>
         </main>
@@ -257,8 +250,10 @@ export default function ClaimDetailPage() {
     )
   }
 
+  const totals = calculateTotals()
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <Header />
 
       {/* Comment Sidebar */}
@@ -266,432 +261,203 @@ export default function ClaimDetailPage() {
         entityType="claim"
         entityId={params.id}
         organizationId={profile.organization_id}
+        entityName={claim.claim_number ? `Claim ${claim.claim_number}` : 'Claim'}
       />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Back Button */}
-        <div className="mb-6">
-          <button
-            onClick={() => router.push('/claims')}
-            className="text-[#006B7D] hover:text-[#008BA3] font-medium flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
+      <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* Breadcrumb and Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+              <Link href="/" className="text-[#006B7D] hover:underline">Claims</Link>
+              <span>&gt;</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold text-gray-900">
+                {claim.claimant} ({claim.claim_number})
+              </h1>
+              <button className="text-gray-400 hover:text-yellow-500">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/claims/${params.id}/edit`}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded text-sm font-medium transition-colors"
+            >
+              Edit Claim
+            </Link>
+            <button
+              onClick={handleCloseClaim}
+              disabled={claim.status === 'CLOSED'}
+              className="px-4 py-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Close Claim
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="px-4 py-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded text-sm font-medium transition-colors flex items-center gap-1"
+              >
+                More
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showMoreMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} />
+                  <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => { handleDelete(); setShowMoreMenu(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      Delete Claim
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Claim Header */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex items-start justify-between">
+        {/* Main Claim Info Card */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-4">
+          <div className="grid grid-cols-2 gap-8">
+            {/* Left Column */}
             <div>
-              <div className="flex items-center gap-4 mb-2">
-                <h1 className="text-2xl font-semibold text-gray-900">{claim.claim_number}</h1>
-                <StatusBadge status={claim.status} />
-              </div>
-              <p className="text-gray-600">{claim.claimant}</p>
-              {claim.clients && (
-                <Link
-                  href={`/clients/${claim.clients.id}`}
-                  className="text-sm text-[#006B7D] hover:underline mt-1 block"
-                >
-                  Client: {claim.clients.name}
-                </Link>
-              )}
+              <DetailRow label="Origami Claim Number" value={claim.claim_number} />
+              <DetailRow label="Claimant" value={claim.claimant} />
+              <DetailRow label="Coverage" value={claim.coverage} />
+              <DetailRow label="Loss Date" value={formatDate(claim.loss_date)} />
+              <DetailRow label="Report Date" value={formatDate(claim.report_date)} />
+              <DetailRow
+                label="Location"
+                value={claim.locations ? `${claim.locations.location_name || claim.locations.company}` : ''}
+                isLink={!!claim.location_id}
+                href={claim.location_id ? `/clients/${claim.client_id}/locations/${claim.location_id}` : ''}
+              />
+              <DetailRow label="Property Name" value={claim.property_name} />
+              <DetailRow label="Claim Description" value={claim.loss_description} />
             </div>
-            <div className="flex gap-3">
-              {isEditing ? (
-                <>
-                  <button
-                    onClick={handleCancel}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={handleEdit}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="px-4 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
+
+            {/* Right Column */}
+            <div>
+              <DetailRow label="Manually Entered Claim" isCheckbox checked={claim.manually_entered_claim} />
+              <DetailRow label="Loss Summary Claim" isCheckbox checked={claim.loss_summary_claim} />
+              <DetailRow
+                label="Policy"
+                value={claim.policy_name || claim.policy_number}
+                isLink={!!claim.policy_number}
+                href="#"
+              />
+              <DetailRow label="Policy Named Insured" value={claim.policy_named_insured} />
+              <DetailRow
+                label="Carrier"
+                value={claim.carrier}
+                isLink={!!claim.carrier}
+                href="#"
+              />
+              <DetailRow label="Wholesaler" value={claim.wholesaler} />
+              <DetailRow label="Carrier Policy Number" value={claim.carrier_policy_number} />
+              <DetailRow label="Carrier Policy Effective Date" value={formatDate(claim.carrier_policy_effective_date)} />
+              <DetailRow label="Cause" value={claim.cause_of_loss} />
+              <DetailRow label="Loss Description" value={claim.loss_description} />
             </div>
           </div>
-        </div>
 
-        {/* Claim Details Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div>
-            {/* Basic Information */}
-            <Section title="Basic Information">
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Claim Number</label>
-                    <input
-                      type="text"
-                      value={editData.claim_number || ''}
-                      onChange={(e) => handleChange('claim_number', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Claimant</label>
-                    <input
-                      type="text"
-                      value={editData.claimant || ''}
-                      onChange={(e) => handleChange('claimant', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select
-                      value={editData.status || 'OPEN'}
-                      onChange={(e) => handleChange('status', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    >
-                      <option value="OPEN">Open</option>
-                      <option value="CLOSED">Closed</option>
-                      <option value="PENDING">Pending</option>
-                      <option value="DENIED">Denied</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Coverage</label>
-                    <select
-                      value={editData.coverage || ''}
-                      onChange={(e) => handleChange('coverage', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    >
-                      <option value="">Select coverage</option>
-                      <option value="General Liability">General Liability</option>
-                      <option value="Property">Property</option>
-                      <option value="Auto">Auto</option>
-                      <option value="Workers Comp">Workers Comp</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Claim Type</label>
-                    <input
-                      type="text"
-                      value={editData.claim_type || ''}
-                      onChange={(e) => handleChange('claim_type', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                      placeholder="e.g., Bodily Injury, Property Damage"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <DetailRow label="Claim Number" value={claim.claim_number} />
-                  <DetailRow label="Claimant" value={claim.claimant} />
-                  <DetailRow label="Status" value={claim.status} />
-                  <DetailRow label="Coverage" value={claim.coverage} />
-                  <DetailRow label="Claim Type" value={claim.claim_type} />
-                </>
-              )}
-            </Section>
+          {/* Full Details Toggle */}
+          <div className="mt-6 pt-4 border-t border-gray-200 text-center">
+            <button
+              onClick={() => setShowFullDetails(!showFullDetails)}
+              className="text-[#006B7D] hover:text-[#008BA3] text-sm font-medium flex items-center gap-1 mx-auto"
+            >
+              <svg className={`w-4 h-4 transition-transform ${showFullDetails ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              Full Details
+            </button>
 
-            {/* Location & Property */}
-            <Section title="Location & Property">
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
-                    <input
-                      type="text"
-                      value={editData.property_name || ''}
-                      onChange={(e) => handleChange('property_name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <DetailRow label="Property Name" value={claim.property_name} />
-                  {claim.locations && (
-                    <>
-                      <DetailRow
-                        label="Location"
-                        value={claim.locations.location_name || claim.locations.company}
-                        isLink
-                        href={`/clients/${claim.client_id}/locations/${claim.location_id}`}
-                      />
-                      <DetailRow
-                        label="Address"
-                        value={[
-                          claim.locations.street_address,
-                          claim.locations.city,
-                          claim.locations.state
-                        ].filter(Boolean).join(', ')}
-                      />
-                    </>
-                  )}
-                </>
-              )}
-            </Section>
-
-            {/* Policy Information */}
-            <Section title="Policy Information">
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Policy Number</label>
-                    <input
-                      type="text"
-                      value={editData.policy_number || ''}
-                      onChange={(e) => handleChange('policy_number', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">TPA Claim Number</label>
-                    <input
-                      type="text"
-                      value={editData.tpa_claim_number || ''}
-                      onChange={(e) => handleChange('tpa_claim_number', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <DetailRow label="Policy Number" value={claim.policy_number} />
+            {showFullDetails && (
+              <div className="mt-4 text-left grid grid-cols-2 gap-8">
+                <div>
                   <DetailRow label="TPA Claim Number" value={claim.tpa_claim_number} />
-                </>
-              )}
-            </Section>
-          </div>
-
-          {/* Right Column */}
-          <div>
-            {/* Dates */}
-            <Section title="Important Dates">
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Loss Date</label>
-                    <input
-                      type="date"
-                      value={editData.loss_date || ''}
-                      onChange={(e) => handleChange('loss_date', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
-                    <input
-                      type="date"
-                      value={editData.report_date || ''}
-                      onChange={(e) => handleChange('report_date', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Closed Date</label>
-                    <input
-                      type="date"
-                      value={editData.closed_date || ''}
-                      onChange={(e) => handleChange('closed_date', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <DetailRow label="Loss Date" value={formatDate(claim.loss_date)} />
-                  <DetailRow label="Report Date" value={formatDate(claim.report_date)} />
+                  <DetailRow label="Claim Type" value={claim.claim_type} />
+                  <DetailRow label="Status" value={claim.status} />
                   <DetailRow label="Closed Date" value={formatDate(claim.closed_date)} />
-                </>
-              )}
-            </Section>
-
-            {/* Financial Information */}
-            <Section title="Financial Information">
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Incurred</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editData.total_incurred || ''}
-                      onChange={(e) => handleChange('total_incurred', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Paid</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editData.total_paid || ''}
-                      onChange={(e) => handleChange('total_paid', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Reserved</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editData.total_reserved || ''}
-                      onChange={(e) => handleChange('total_reserved', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Deductible</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editData.deductible || ''}
-                      onChange={(e) => handleChange('deductible', parseFloat(e.target.value) || null)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">SIR</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editData.sir || ''}
-                      onChange={(e) => handleChange('sir', parseFloat(e.target.value) || null)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
                 </div>
-              ) : (
-                <>
-                  <DetailRow label="Total Incurred" value={formatCurrency(claim.total_incurred)} />
-                  <DetailRow label="Total Paid" value={formatCurrency(claim.total_paid)} />
-                  <DetailRow label="Total Reserved" value={formatCurrency(claim.total_reserved)} />
-                  <DetailRow label="Deductible" value={claim.deductible ? formatCurrency(claim.deductible) : '-'} />
-                  <DetailRow label="SIR" value={claim.sir ? formatCurrency(claim.sir) : '-'} />
-                </>
-              )}
-            </Section>
-
-            {/* Adjuster Information */}
-            <Section title="Adjuster Information" defaultOpen={false}>
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Adjuster Name</label>
-                    <input
-                      type="text"
-                      value={editData.adjuster_name || ''}
-                      onChange={(e) => handleChange('adjuster_name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Adjuster Email</label>
-                    <input
-                      type="email"
-                      value={editData.adjuster_email || ''}
-                      onChange={(e) => handleChange('adjuster_email', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Adjuster Phone</label>
-                    <input
-                      type="tel"
-                      value={editData.adjuster_phone || ''}
-                      onChange={(e) => handleChange('adjuster_phone', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
+                <div>
                   <DetailRow label="Adjuster Name" value={claim.adjuster_name} />
                   <DetailRow label="Adjuster Email" value={claim.adjuster_email} />
                   <DetailRow label="Adjuster Phone" value={claim.adjuster_phone} />
-                </>
-              )}
-            </Section>
+                  <DetailRow label="Attorney Name" value={claim.attorney_name} />
+                  <DetailRow label="Attorney Firm" value={claim.attorney_firm} />
+                </div>
+                {claim.notes && (
+                  <div className="col-span-2">
+                    <div className="text-sm text-gray-500 mb-1">Notes:</div>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{claim.notes}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Full Width Sections */}
-        <div className="mt-6">
-          {/* Loss Description */}
-          <Section title="Loss Description">
-            {isEditing ? (
-              <div>
-                <textarea
-                  value={editData.loss_description || ''}
-                  onChange={(e) => handleChange('loss_description', e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                  placeholder="Describe the loss..."
-                />
-              </div>
-            ) : (
-              <p className="text-gray-700 whitespace-pre-wrap">
-                {claim.loss_description || 'No description provided.'}
-              </p>
-            )}
-          </Section>
+        {/* Current Financials Card */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-[#006B7D]">Current Financials</h2>
+            <div className="flex items-center gap-4">
+              <button className="text-[#006B7D] hover:underline text-sm">Prior Valuation</button>
+              <button className="text-[#006B7D] hover:underline text-sm">Show Graph</button>
+            </div>
+          </div>
 
-          {/* Cause of Loss */}
-          <Section title="Cause of Loss" defaultOpen={false}>
-            {isEditing ? (
-              <div>
-                <input
-                  type="text"
-                  value={editData.cause_of_loss || ''}
-                  onChange={(e) => handleChange('cause_of_loss', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                  placeholder="e.g., Fire, Water Damage, Theft"
-                />
-              </div>
-            ) : (
-              <p className="text-gray-700">{claim.cause_of_loss || 'Not specified.'}</p>
-            )}
-          </Section>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="py-2 px-4 text-left text-sm font-medium text-gray-600">Categories</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Reserves</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Paid</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Outstanding</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Incurred</th>
+              </tr>
+            </thead>
+            <tbody>
+              <FinancialRow category="Bodily Injury" data={getFinancialByCategory('Bodily Injury')} />
+              <FinancialRow category="Expense" data={getFinancialByCategory('Expense')} />
+              <FinancialRow category="Property Damage" data={getFinancialByCategory('Property Damage')} />
+              <FinancialRow category="Legal" data={getFinancialByCategory('Legal')} />
+              <FinancialRow category="Other" data={getFinancialByCategory('Other')} />
+              <FinancialRow category="Recovery" data={getFinancialByCategory('Recovery')} isExpandable={false} isNegative />
+              <FinancialRow category="Subrogation" data={getFinancialByCategory('Subrogation')} isExpandable={false} isNegative />
+            </tbody>
+          </table>
 
-          {/* Notes */}
-          <Section title="Notes" defaultOpen={false}>
-            {isEditing ? (
-              <div>
-                <textarea
-                  value={editData.notes || ''}
-                  onChange={(e) => handleChange('notes', e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-                  placeholder="Additional notes..."
-                />
+          {/* Incurred Formula and Totals */}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Incurred Formula:</span>
+                <select className="text-sm border border-gray-300 rounded px-2 py-1 text-gray-700">
+                  <option>Net Incurred</option>
+                  <option>Gross Incurred</option>
+                </select>
               </div>
-            ) : (
-              <p className="text-gray-700 whitespace-pre-wrap">
-                {claim.notes || 'No notes.'}
-              </p>
-            )}
-          </Section>
+              <div className="flex items-center gap-8 text-sm font-semibold">
+                <span className="w-24 text-right">{formatCurrency(totals.reserves)}</span>
+                <span className="w-24 text-right">{formatCurrency(totals.paid)}</span>
+                <span className="w-24 text-right">{formatCurrency(totals.outstanding)}</span>
+                <span className="w-24 text-right">{formatCurrency(totals.incurred)}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     </div>

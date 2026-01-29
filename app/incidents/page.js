@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
-import ClaimsTable from '@/components/ClaimsTable'
+import IncidentsTable from '@/components/IncidentsTable'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -40,7 +40,7 @@ function getColorFromName(name) {
   return colors[Math.abs(hash) % colors.length]
 }
 
-export default function ClaimsPage() {
+export default function IncidentsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
@@ -51,9 +51,9 @@ export default function ClaimsPage() {
 
   // Data states
   const [clients, setClients] = useState([])
-  const [claims, setClaims] = useState([])
+  const [incidents, setIncidents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [claimsLoading, setClaimsLoading] = useState(false)
+  const [incidentsLoading, setIncidentsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   // Check URL for client param
@@ -94,21 +94,21 @@ export default function ClaimsPage() {
     }
   }, [profile?.organization_id])
 
-  // Fetch claims for selected client
-  const fetchClaims = useCallback(async () => {
+  // Fetch incidents for selected client
+  const fetchIncidents = useCallback(async () => {
     if (!profile?.organization_id || !selectedClientId) return
 
-    setClaimsLoading(true)
+    setIncidentsLoading(true)
     try {
       const { data, error } = await supabase
-        .from('claims')
-        .select('*')
+        .from('incidents')
+        .select('*, locations(location_name, company)')
         .eq('organization_id', profile.organization_id)
         .eq('client_id', selectedClientId)
-        .order('report_date', { ascending: false })
+        .order('incident_number', { ascending: false })
 
       if (error) throw error
-      setClaims(data || [])
+      setIncidents(data || [])
 
       // Also fetch the client details
       const { data: clientData } = await supabase
@@ -119,9 +119,9 @@ export default function ClaimsPage() {
 
       setSelectedClient(clientData)
     } catch (error) {
-      console.error('Error fetching claims:', error)
+      console.error('Error fetching incidents:', error)
     } finally {
-      setClaimsLoading(false)
+      setIncidentsLoading(false)
     }
   }, [profile?.organization_id, selectedClientId])
 
@@ -133,22 +133,22 @@ export default function ClaimsPage() {
 
   useEffect(() => {
     if (selectedClientId && user && profile) {
-      fetchClaims()
+      fetchIncidents()
     }
-  }, [selectedClientId, user, profile, fetchClaims])
+  }, [selectedClientId, user, profile, fetchIncidents])
 
   // Handle client selection
   const handleSelectClient = (clientId) => {
     setSelectedClientId(clientId)
-    router.push(`/claims?client=${clientId}`)
+    router.push(`/incidents?client=${clientId}`)
   }
 
   // Handle back to client selection
   const handleBackToClients = () => {
     setSelectedClientId(null)
     setSelectedClient(null)
-    setClaims([])
-    router.push('/claims')
+    setIncidents([])
+    router.push('/incidents')
   }
 
   // Filter clients by search
@@ -179,8 +179,8 @@ export default function ClaimsPage() {
         {!selectedClientId ? (
           <>
             <div className="mb-8">
-              <h1 className="text-3xl font-semibold text-gray-900 text-center mb-2">Claims</h1>
-              <p className="text-center text-gray-600">Select a client to view their claims</p>
+              <h1 className="text-3xl font-semibold text-gray-900 text-center mb-2">Incidents</h1>
+              <p className="text-center text-gray-600">Select a client to view their incidents</p>
             </div>
 
             {/* Search */}
@@ -246,7 +246,7 @@ export default function ClaimsPage() {
           </>
         ) : (
           <>
-            {/* Claims view for selected client */}
+            {/* Incidents view for selected client */}
             <div className="mb-6">
               <button
                 onClick={handleBackToClients}
@@ -261,31 +261,31 @@ export default function ClaimsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-semibold text-gray-900">
-                    Claims - {selectedClient?.name || 'Loading...'}
+                    Incidents - {selectedClient?.name || 'Loading...'}
                   </h1>
                   <p className="text-gray-600 mt-1">
-                    Manage claims for this client
+                    Manage incidents for this client
                   </p>
                 </div>
                 <Link
                   href={`/clients/${selectedClientId}`}
                   className="text-[#006B7D] hover:underline text-sm"
                 >
-                  View Client Details →
+                  View Client Details
                 </Link>
               </div>
             </div>
 
-            {/* Claims Table */}
+            {/* Incidents Table */}
             <div className="bg-white rounded-xl shadow-sm p-6">
-              {claimsLoading ? (
+              {incidentsLoading ? (
                 <div className="text-center py-16">
                   <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
-                  <p className="mt-4 text-gray-600">Loading claims...</p>
+                  <p className="mt-4 text-gray-600">Loading incidents...</p>
                 </div>
               ) : (
-                <ClaimsTable
-                  claims={claims}
+                <IncidentsTable
+                  incidents={incidents}
                   clientId={selectedClientId}
                 />
               )}

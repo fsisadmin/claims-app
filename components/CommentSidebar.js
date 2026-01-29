@@ -65,7 +65,7 @@ function getFileIcon(fileType, size = 'w-5 h-5') {
   )
 }
 
-export default function CommentSidebar({ entityType, entityId, organizationId }) {
+export default function CommentSidebar({ entityType, entityId, organizationId, entityName }) {
   const { user, profile } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [comments, setComments] = useState([])
@@ -473,7 +473,7 @@ export default function CommentSidebar({ entityType, entityId, organizationId })
       >
         {/* Header */}
         <div className="bg-[#006B7D] text-white p-4">
-          <h2 className="font-semibold text-lg">Activity</h2>
+          <h2 className="font-semibold text-lg">{entityName ? `${entityName}` : 'Activity'}</h2>
           <p className="text-sm text-white/70">Comments & Files</p>
         </div>
 

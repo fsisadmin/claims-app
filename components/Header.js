@@ -55,14 +55,6 @@ export default function Header() {
             >
               Clients
             </Link>
-            <Link
-              href="/claims"
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                pathname.startsWith('/claims') ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Claims
-            </Link>
             {isAdmin && (
               <>
                 <Link
