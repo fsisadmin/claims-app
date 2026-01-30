@@ -5,25 +5,18 @@ import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import ClientCard from '@/components/ClientCard'
 import { useAuth } from '@/contexts/AuthContext'
-import { useClients, useRecentClients, getRecentClientIds } from '@/hooks'
-
-const INITIAL_DISPLAY_COUNT = 10
-const LOAD_MORE_COUNT = 10
+import { useClients, useRecentClients } from '@/hooks'
 
 export default function Home() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
-  const [displayCount, setDisplayCount] = useState(INITIAL_DISPLAY_COUNT)
 
   // Use SWR-cached clients hook - instant load on subsequent visits
   const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id)
 
   // Get recently viewed clients
-  const { recentClients, isLoading: recentLoading } = useRecentClients(profile?.organization_id)
-
-  // Get recent IDs to exclude from main list
-  const recentIds = useMemo(() => getRecentClientIds(), [])
+  const { recentClients } = useRecentClients(profile?.organization_id)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -32,40 +25,19 @@ export default function Home() {
     }
   }, [user, authLoading, router])
 
-  // Reset display count when search changes
-  useEffect(() => {
-    setDisplayCount(INITIAL_DISPLAY_COUNT)
-  }, [searchQuery])
-
-  // Optimized search with useMemo - excludes recently viewed from main list
+  // Search results - only when searching
   const filteredClients = useMemo(() => {
-    // When searching, search all clients
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      return clients.filter(
-        client =>
-          client.name?.toLowerCase().includes(query) ||
-          client.ams_code?.toLowerCase().includes(query) ||
-          client.client_number?.toLowerCase().includes(query) ||
-          client.producer_name?.toLowerCase().includes(query) ||
-          client.account_manager?.toLowerCase().includes(query)
-      )
-    }
-
-    // When not searching, exclude recently viewed from main list
-    return clients.filter(client => !recentIds.includes(client.id))
-  }, [searchQuery, clients, recentIds])
-
-  // Clients to display (with load more pagination)
-  const displayedClients = useMemo(() => {
-    return filteredClients.slice(0, displayCount)
-  }, [filteredClients, displayCount])
-
-  const hasMore = displayCount < filteredClients.length
-
-  const loadMore = () => {
-    setDisplayCount(prev => prev + LOAD_MORE_COUNT)
-  }
+    if (!searchQuery.trim()) return []
+    const query = searchQuery.toLowerCase()
+    return clients.filter(
+      client =>
+        client.name?.toLowerCase().includes(query) ||
+        client.ams_code?.toLowerCase().includes(query) ||
+        client.client_number?.toLowerCase().includes(query) ||
+        client.producer_name?.toLowerCase().includes(query) ||
+        client.account_manager?.toLowerCase().includes(query)
+    )
+  }, [searchQuery, clients])
 
   // Don't render if not authenticated (will redirect)
   if (!authLoading && !user) {
@@ -123,65 +95,11 @@ export default function Home() {
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Clients Section Header */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-semibold text-gray-900 text-center mb-8">
-            Clients
-          </h2>
-
-          {/* Search and Add Client */}
-          <div className="flex items-center justify-between gap-4 mb-6">
-            {/* Search Bar */}
-            <div className="flex-1 max-w-2xl">
-              <div className="relative group">
-                <svg
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#006B7D] transition-colors"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search clients..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] transition-all shadow-sm hover:shadow-md text-gray-900 placeholder:text-gray-400"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Add Client Button */}
-            <button
-              onClick={() => router.push('/clients/add')}
-              className="bg-[#006B7D] hover:bg-[#008BA3] text-white px-6 py-3.5 rounded-2xl font-semibold transition-all shadow-md hover:shadow-lg hover:scale-[1.02] whitespace-nowrap active:scale-[0.98]"
-            >
-              Add Client
-            </button>
-          </div>
-        </div>
-
         {/* Loading State */}
-        {(authLoading || clientsLoading) && (
+        {(authLoading || !profile || clientsLoading) && (
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
-            <p className="mt-4 text-gray-600 font-medium">Loading clients...</p>
+            <p className="mt-4 text-gray-600 font-medium">Loading...</p>
           </div>
         )}
 
@@ -191,79 +109,110 @@ export default function Home() {
             <p className="text-red-800 font-medium">
               Error loading clients: {isError.message}
             </p>
-            <p className="text-sm text-red-600 mt-2">
-              Make sure you have set up your Supabase credentials in .env.local
-            </p>
           </div>
         )}
 
-        {/* Recently Viewed Section */}
-        {!authLoading && !clientsLoading && !searchQuery && recentClients.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Recently Viewed
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recentClients.map(client => (
-                <ClientCard key={client.id} client={client} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* All Clients Section */}
-        {!authLoading && !clientsLoading && !isError && displayedClients.length > 0 && (
-          <div>
+        {/* Main Content - Only show when loaded */}
+        {!authLoading && profile && !clientsLoading && !isError && (
+          <>
+            {/* Recently Viewed Section */}
             {!searchQuery && recentClients.length > 0 && (
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">All Clients</h3>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {displayedClients.map(client => (
-                <ClientCard key={client.id} client={client} />
-              ))}
-            </div>
-
-            {/* Load More Button */}
-            {hasMore && (
-              <div className="mt-8 text-center">
-                <button
-                  onClick={loadMore}
-                  className="px-8 py-3 bg-white border-2 border-[#006B7D] text-[#006B7D] rounded-2xl font-semibold hover:bg-[#006B7D] hover:text-white transition-all shadow-sm hover:shadow-md"
-                >
-                  Load More ({filteredClients.length - displayCount} remaining)
-                </button>
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Recently Viewed
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {recentClients.map(client => (
+                    <ClientCard key={client.id} client={client} />
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Empty State - Search */}
-        {!authLoading && !clientsLoading && !isError && filteredClients.length === 0 && searchQuery && (
-          <div className="text-center py-16">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <p className="text-gray-600 font-medium">No clients found matching "{searchQuery}"</p>
-            <p className="text-gray-500 text-sm mt-2">Try adjusting your search terms</p>
-          </div>
-        )}
+            {/* Search and Add Client */}
+            <div className="flex items-center gap-3 mb-6">
+              {/* Search Bar */}
+              <div className="flex-1">
+                <div className="relative group">
+                  <svg
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#006B7D] transition-colors"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search clients..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] transition-all shadow-sm hover:shadow-md text-gray-900 placeholder:text-gray-400"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
 
-        {/* Empty State - No Clients */}
-        {!authLoading && !clientsLoading && !isError && clients.length === 0 && !searchQuery && (
-          <div className="text-center py-16">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#006B7D]/10 mb-4">
-              <svg className="w-8 h-8 text-[#006B7D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              {/* Add Client Button */}
+              <button
+                onClick={() => router.push('/clients/add')}
+                className="bg-[#006B7D] hover:bg-[#008BA3] text-white px-6 py-3.5 rounded-2xl font-semibold transition-all shadow-md hover:shadow-lg hover:scale-[1.02] whitespace-nowrap active:scale-[0.98]"
+              >
+                Add Client
+              </button>
             </div>
-            <p className="text-gray-600 font-medium">No clients yet</p>
-            <p className="text-gray-500 text-sm mt-2">Click "Add Client" to create your first one</p>
-          </div>
+
+            {/* Search Results - Only show when searching */}
+            {searchQuery && filteredClients.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-4">
+                  Search Results ({filteredClients.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredClients.map(client => (
+                    <ClientCard key={client.id} client={client} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty State - Search */}
+            {searchQuery && filteredClients.length === 0 && (
+              <div className="text-center py-16">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <p className="text-gray-600 font-medium">No clients found matching "{searchQuery}"</p>
+                <p className="text-gray-500 text-sm mt-2">Try adjusting your search terms</p>
+              </div>
+            )}
+
+            {/* Empty State - No Recent Clients */}
+            {!searchQuery && recentClients.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500">Search for a client or view your recently accessed clients here</p>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
