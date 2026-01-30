@@ -1,1 +1,10 @@
-export { useLocations, useLocation, useClient, useClients, useClientsPaginated } from './useLocations'
+export {
+  useLocations,
+  useLocation,
+  useClient,
+  useClients,
+  useClientsPaginated,
+  useRecentClients,
+  trackClientView,
+  getRecentClientIds
+} from './useLocations'

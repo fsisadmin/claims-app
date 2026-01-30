@@ -9,7 +9,7 @@ import LocationsTable from '@/components/LocationsTable'
 import ClaimsTable from '@/components/ClaimsTable'
 import IncidentsTable from '@/components/IncidentsTable'
 import CommentSidebar from '@/components/CommentSidebar'
-import { useClient, useLocations } from '@/hooks'
+import { useClient, useLocations, trackClientView } from '@/hooks'
 
 // Function to generate initials from company name
 function getInitials(name) {
@@ -69,6 +69,13 @@ export default function ClientDetailPage() {
   // Use SWR hooks for cached data fetching
   const { client, isLoading: clientLoading, isError: clientError } = useClient(params.id, profile?.organization_id)
   const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
+
+  // Track this client as recently viewed
+  useEffect(() => {
+    if (client && params.id) {
+      trackClientView(params.id)
+    }
+  }, [client, params.id])
 
   // Fetch counts for tabs (fast - runs in parallel on initial load)
   const fetchCounts = useCallback(async () => {

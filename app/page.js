@@ -5,15 +5,25 @@ import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import ClientCard from '@/components/ClientCard'
 import { useAuth } from '@/contexts/AuthContext'
-import { useClients } from '@/hooks'
+import { useClients, useRecentClients, getRecentClientIds } from '@/hooks'
+
+const INITIAL_DISPLAY_COUNT = 10
+const LOAD_MORE_COUNT = 10
 
 export default function Home() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
+  const [displayCount, setDisplayCount] = useState(INITIAL_DISPLAY_COUNT)
 
   // Use SWR-cached clients hook - instant load on subsequent visits
   const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id)
+
+  // Get recently viewed clients
+  const { recentClients, isLoading: recentLoading } = useRecentClients(profile?.organization_id)
+
+  // Get recent IDs to exclude from main list
+  const recentIds = useMemo(() => getRecentClientIds(), [])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -22,22 +32,40 @@ export default function Home() {
     }
   }, [user, authLoading, router])
 
-  // Optimized search with useMemo
+  // Reset display count when search changes
+  useEffect(() => {
+    setDisplayCount(INITIAL_DISPLAY_COUNT)
+  }, [searchQuery])
+
+  // Optimized search with useMemo - excludes recently viewed from main list
   const filteredClients = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return clients
+    // When searching, search all clients
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      return clients.filter(
+        client =>
+          client.name?.toLowerCase().includes(query) ||
+          client.ams_code?.toLowerCase().includes(query) ||
+          client.client_number?.toLowerCase().includes(query) ||
+          client.producer_name?.toLowerCase().includes(query) ||
+          client.account_manager?.toLowerCase().includes(query)
+      )
     }
 
-    const query = searchQuery.toLowerCase()
-    return clients.filter(
-      client =>
-        client.name?.toLowerCase().includes(query) ||
-        client.ams_code?.toLowerCase().includes(query) ||
-        client.client_number?.toLowerCase().includes(query) ||
-        client.producer_name?.toLowerCase().includes(query) ||
-        client.account_manager?.toLowerCase().includes(query)
-    )
-  }, [searchQuery, clients])
+    // When not searching, exclude recently viewed from main list
+    return clients.filter(client => !recentIds.includes(client.id))
+  }, [searchQuery, clients, recentIds])
+
+  // Clients to display (with load more pagination)
+  const displayedClients = useMemo(() => {
+    return filteredClients.slice(0, displayCount)
+  }, [filteredClients, displayCount])
+
+  const hasMore = displayCount < filteredClients.length
+
+  const loadMore = () => {
+    setDisplayCount(prev => prev + LOAD_MORE_COUNT)
+  }
 
   // Don't render if not authenticated (will redirect)
   if (!authLoading && !user) {
@@ -169,7 +197,50 @@ export default function Home() {
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Recently Viewed Section */}
+        {!authLoading && !clientsLoading && !searchQuery && recentClients.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Recently Viewed
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {recentClients.map(client => (
+                <ClientCard key={client.id} client={client} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* All Clients Section */}
+        {!authLoading && !clientsLoading && !isError && displayedClients.length > 0 && (
+          <div>
+            {!searchQuery && recentClients.length > 0 && (
+              <h3 className="text-lg font-semibold text-gray-700 mb-4">All Clients</h3>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayedClients.map(client => (
+                <ClientCard key={client.id} client={client} />
+              ))}
+            </div>
+
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="mt-8 text-center">
+                <button
+                  onClick={loadMore}
+                  className="px-8 py-3 bg-white border-2 border-[#006B7D] text-[#006B7D] rounded-2xl font-semibold hover:bg-[#006B7D] hover:text-white transition-all shadow-sm hover:shadow-md"
+                >
+                  Load More ({filteredClients.length - displayCount} remaining)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty State - Search */}
         {!authLoading && !clientsLoading && !isError && filteredClients.length === 0 && searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
@@ -182,6 +253,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* Empty State - No Clients */}
         {!authLoading && !clientsLoading && !isError && clients.length === 0 && !searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#006B7D]/10 mb-4">
@@ -191,15 +263,6 @@ export default function Home() {
             </div>
             <p className="text-gray-600 font-medium">No clients yet</p>
             <p className="text-gray-500 text-sm mt-2">Click "Add Client" to create your first one</p>
-          </div>
-        )}
-
-        {/* Clients Grid */}
-        {!authLoading && !clientsLoading && !isError && filteredClients.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredClients.map(client => (
-              <ClientCard key={client.id} client={client} />
-            ))}
           </div>
         )}
       </main>

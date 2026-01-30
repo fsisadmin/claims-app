@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { supabase } from '@/lib/supabase'
 
@@ -210,3 +211,81 @@ export function useClients(organizationId) {
     mutate,
   }
 }
+
+// ============================================================
+// Recently Viewed Clients (localStorage)
+// ============================================================
+
+const RECENT_CLIENTS_KEY = 'recentlyViewedClients'
+const MAX_RECENT_CLIENTS = 3
+
+// Get recently viewed client IDs from localStorage
+export function getRecentClientIds() {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = localStorage.getItem(RECENT_CLIENTS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+// Track a client view (call when user clicks into a client)
+export function trackClientView(clientId) {
+  if (typeof window === 'undefined' || !clientId) return
+  try {
+    const recent = getRecentClientIds()
+    // Remove if already exists, then add to front
+    const filtered = recent.filter(id => id !== clientId)
+    const updated = [clientId, ...filtered].slice(0, MAX_RECENT_CLIENTS)
+    localStorage.setItem(RECENT_CLIENTS_KEY, JSON.stringify(updated))
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+// Fetch recently viewed clients by IDs
+async function fetchRecentClients({ clientIds, organizationId }) {
+  if (!organizationId || !clientIds.length) return []
+
+  const { data, error } = await supabase
+    .from('clients')
+    .select(CLIENTS_LIST_COLUMNS)
+    .eq('organization_id', organizationId)
+    .in('id', clientIds)
+
+  if (error) throw error
+
+  // Sort by the order in clientIds (most recent first)
+  const sorted = clientIds
+    .map(id => data?.find(c => c.id === id))
+    .filter(Boolean)
+
+  return sorted
+}
+
+// Hook to get recently viewed clients
+export function useRecentClients(organizationId) {
+  const [clientIds, setClientIds] = useState([])
+
+  // Load IDs from localStorage on mount
+  useEffect(() => {
+    setClientIds(getRecentClientIds())
+  }, [])
+
+  const { data, error, isLoading } = useSWR(
+    organizationId && clientIds.length ? ['recentClients', organizationId, clientIds.join(',')] : null,
+    () => fetchRecentClients({ clientIds, organizationId }),
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 5000,
+    }
+  )
+
+  return {
+    recentClients: data || [],
+    isLoading,
+    isError: error,
+  }
+}
+
