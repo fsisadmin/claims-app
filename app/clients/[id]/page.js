@@ -102,15 +102,9 @@ export default function ClientDetailPage() {
 
     setClaimsLoading(true)
     try {
-      // Optimized: only fetch columns used in ClaimsTable
       const { data, error } = await supabase
         .from('claims')
-        .select(`
-          id, claim_number, claimant, coverage, property_name, status,
-          loss_date, report_date, policy_number, loss_description,
-          total_incurred, total_paid, total_reserved,
-          claim_type, cause_of_loss, client_id, location_id
-        `)
+        .select('*')
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('report_date', { ascending: false })
@@ -132,12 +126,10 @@ export default function ClientDetailPage() {
 
     setIncidentsLoading(true)
     try {
-      // Optimized: only fetch columns used in IncidentsTable
       const { data, error } = await supabase
         .from('incidents')
         .select(`
-          id, incident_number, incident_date, incident_description,
-          incident_type, status, location_id, client_id,
+          *,
           locations(location_name, company)
         `)
         .eq('organization_id', profile.organization_id)
