@@ -1,1 +1,1 @@
-export { useLocations, useLocation, useClient, useClients } from './useLocations'
+export { useLocations, useLocation, useClient, useClients, useClientsPaginated } from './useLocations'

@@ -53,6 +53,18 @@ export function useLocations(clientId, organizationId) {
   }
 }
 
+// Columns needed for single location view (detail page)
+const LOCATION_DETAIL_COLUMNS = `
+  id, location_name, company, entity_name,
+  street_address, city, state, zip, county, country,
+  num_buildings, num_units, square_footage,
+  construction_description, orig_year_built, year_renovated,
+  real_property_value, personal_property_value, total_tiv,
+  tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
+  latitude, longitude, occupancy_type, sprinkler_type,
+  client_id, organization_id, created_at, updated_at
+`
+
 // Fetcher function for a single location
 async function fetchLocation({ locationId, organizationId }) {
   if (!locationId || !organizationId) {
@@ -61,7 +73,7 @@ async function fetchLocation({ locationId, organizationId }) {
 
   const { data, error } = await supabase
     .from('locations')
-    .select('*')
+    .select(LOCATION_DETAIL_COLUMNS)
     .eq('id', locationId)
     .eq('organization_id', organizationId)
     .single()
@@ -127,7 +139,53 @@ export function useClient(clientId, organizationId) {
   }
 }
 
-// Fetcher function for all clients in organization
+// Columns needed for clients list
+const CLIENTS_LIST_COLUMNS = 'id, name, state, ams_code, client_number, producer_name, account_manager, logo_url'
+
+// Fetcher function for paginated clients
+async function fetchClientsPaginated({ organizationId, page = 0, pageSize = 50 }) {
+  if (!organizationId) {
+    return { data: [], count: 0 }
+  }
+
+  const from = page * pageSize
+  const to = from + pageSize - 1
+
+  const { data, error, count } = await supabase
+    .from('clients')
+    .select(CLIENTS_LIST_COLUMNS, { count: 'exact' })
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true })
+    .range(from, to)
+
+  if (error) throw error
+  return { data: data || [], count: count || 0 }
+}
+
+// Custom hook for fetching paginated clients with SWR caching
+export function useClientsPaginated(organizationId, page = 0, pageSize = 50) {
+  const { data, error, isLoading, mutate } = useSWR(
+    organizationId ? ['clients', organizationId, page, pageSize] : null,
+    () => fetchClientsPaginated({ organizationId, page, pageSize }),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 5000,
+    }
+  )
+
+  return {
+    clients: data?.data || [],
+    totalCount: data?.count || 0,
+    totalPages: Math.ceil((data?.count || 0) / pageSize),
+    isLoading,
+    isError: error,
+    refresh: mutate,
+    mutate,
+  }
+}
+
+// Fetcher function for all clients (with limit for safety)
 async function fetchClients({ organizationId }) {
   if (!organizationId) {
     return []
@@ -135,15 +193,16 @@ async function fetchClients({ organizationId }) {
 
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, state, ams_code, client_number, producer_name, account_manager, logo_url')
+    .select(CLIENTS_LIST_COLUMNS)
     .eq('organization_id', organizationId)
     .order('name', { ascending: true })
+    .limit(500) // Safety limit
 
   if (error) throw error
   return data || []
 }
 
-// Custom hook for fetching all clients with SWR caching
+// Custom hook for fetching all clients with SWR caching (use for search)
 export function useClients(organizationId) {
   const { data, error, isLoading, mutate } = useSWR(
     organizationId ? ['clients', organizationId] : null,

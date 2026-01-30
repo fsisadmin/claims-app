@@ -67,6 +67,38 @@ ON claims(location_id, organization_id) WHERE location_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_incidents_client_org
 ON incidents(client_id, organization_id);
 
+-- Incidents sorted by incident_number for client detail
+CREATE INDEX IF NOT EXISTS idx_incidents_client_org_number
+ON incidents(client_id, organization_id, incident_number DESC);
+
+-- ============================================================
+-- LOCATIONS - Common query patterns
+-- ============================================================
+
+-- Locations filtered by client_id + organization_id (client detail page)
+CREATE INDEX IF NOT EXISTS idx_locations_client_org
+ON locations(client_id, organization_id);
+
+-- Locations sorted by name for client detail
+CREATE INDEX IF NOT EXISTS idx_locations_client_org_name
+ON locations(client_id, organization_id, location_name);
+
+-- ============================================================
+-- CLIENTS - Common query patterns
+-- ============================================================
+
+-- Clients filtered by organization_id and sorted by name (home page)
+CREATE INDEX IF NOT EXISTS idx_clients_org_name
+ON clients(organization_id, name);
+
+-- ============================================================
+-- CLAIMS - Location detail page
+-- ============================================================
+
+-- Claims for location detail with loss_date sorting
+CREATE INDEX IF NOT EXISTS idx_claims_location_org_date
+ON claims(location_id, organization_id, loss_date DESC) WHERE location_id IS NOT NULL;
+
 -- ============================================================
 -- Verify indexes were created
 -- ============================================================

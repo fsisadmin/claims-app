@@ -39,20 +39,8 @@ export default function Home() {
     )
   }, [searchQuery, clients])
 
-  // Show loading while checking authentication
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#006B7D]"></div>
-          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
   // Don't render if not authenticated (will redirect)
-  if (!user) {
+  if (!authLoading && !user) {
     return null
   }
 
@@ -162,7 +150,7 @@ export default function Home() {
         </div>
 
         {/* Loading State */}
-        {clientsLoading && (
+        {(authLoading || clientsLoading) && (
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
             <p className="mt-4 text-gray-600 font-medium">Loading clients...</p>
@@ -182,7 +170,7 @@ export default function Home() {
         )}
 
         {/* Empty State */}
-        {!clientsLoading && !isError && filteredClients.length === 0 && searchQuery && (
+        {!authLoading && !clientsLoading && !isError && filteredClients.length === 0 && searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
               <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -194,7 +182,7 @@ export default function Home() {
           </div>
         )}
 
-        {!clientsLoading && !isError && clients.length === 0 && !searchQuery && (
+        {!authLoading && !clientsLoading && !isError && clients.length === 0 && !searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#006B7D]/10 mb-4">
               <svg className="w-8 h-8 text-[#006B7D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,7 +195,7 @@ export default function Home() {
         )}
 
         {/* Clients Grid */}
-        {!clientsLoading && !isError && filteredClients.length > 0 && (
+        {!authLoading && !clientsLoading && !isError && filteredClients.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredClients.map(client => (
               <ClientCard key={client.id} client={client} />

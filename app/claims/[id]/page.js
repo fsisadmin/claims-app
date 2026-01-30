@@ -98,10 +98,17 @@ export default function ClaimDetailPage() {
 
     try {
       setLoading(true)
+      // Optimized: Select only needed columns instead of SELECT *
       const { data, error } = await supabase
         .from('claims')
         .select(`
-          *,
+          id, claim_number, claimant, status, coverage, claim_type, cause_of_loss,
+          loss_date, report_date, close_date, reopen_date,
+          loss_description, property_name, policy_number,
+          total_incurred, total_paid, total_reserved, total_outstanding,
+          adjuster, tpa, examiner, defense_counsel, insurance_carrier,
+          deductible, deductible_satisfied, suit_filed, subrogation_potential,
+          client_id, location_id, organization_id, created_at, updated_at,
           clients:client_id(id, name),
           locations:location_id(id, location_name, company, street_address, city, state)
         `)
@@ -112,10 +119,10 @@ export default function ClaimDetailPage() {
       if (error) throw error
       setClaim(data)
 
-      // Fetch financials
+      // Fetch financials - optimized columns
       const { data: financialsData, error: financialsError } = await supabase
         .from('claim_financials')
-        .select('*')
+        .select('id, claim_id, category, reserves, paid, outstanding, incurred')
         .eq('claim_id', params.id)
         .order('category')
 

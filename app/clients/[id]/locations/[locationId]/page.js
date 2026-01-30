@@ -37,12 +37,14 @@ export default function LocationDetailPage() {
 
       setClaimsLoading(true)
       try {
+        // Optimized: Select only columns needed for claims table display
         const { data, error } = await supabase
           .from('claims')
-          .select('*')
+          .select('id, claim_number, loss_date, claim_type, coverage, status, total_incurred, loss_description')
           .eq('location_id', params.locationId)
           .eq('organization_id', profile.organization_id)
           .order('loss_date', { ascending: false })
+          .limit(100)
 
         if (error) throw error
         setClaims(data || [])
