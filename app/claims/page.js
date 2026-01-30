@@ -85,6 +85,7 @@ function ClaimsPageContent() {
         .select('id, name, ams_code, account_manager')
         .eq('organization_id', profile.organization_id)
         .order('name')
+        .limit(500) // Prevent unbounded query
 
       if (error) throw error
       setClients(data || [])
@@ -95,7 +96,7 @@ function ClaimsPageContent() {
     }
   }, [profile?.organization_id])
 
-  // Fetch claims for selected client
+  // Fetch claims for selected client (optimized - only needed columns)
   const fetchClaims = useCallback(async () => {
     if (!profile?.organization_id || !selectedClientId) return
 
@@ -103,10 +104,16 @@ function ClaimsPageContent() {
     try {
       const { data, error } = await supabase
         .from('claims')
-        .select('*')
+        .select(`
+          id, claim_number, claimant, coverage, property_name, status,
+          loss_date, report_date, policy_number, loss_description,
+          total_incurred, total_paid, total_reserved,
+          claim_type, cause_of_loss, client_id, location_id
+        `)
         .eq('organization_id', profile.organization_id)
         .eq('client_id', selectedClientId)
         .order('report_date', { ascending: false })
+        .limit(200)
 
       if (error) throw error
       setClaims(data || [])

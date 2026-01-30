@@ -1,19 +1,19 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import ClientCard from '@/components/ClientCard'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useClients } from '@/hooks'
 
 export default function Home() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
-  const [clients, setClients] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+
+  // Use SWR-cached clients hook - instant load on subsequent visits
+  const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -21,47 +21,6 @@ export default function Home() {
       router.push('/login')
     }
   }, [user, authLoading, router])
-
-  const fetchClients = useCallback(async () => {
-    if (!profile?.organization_id) {
-      setLoading(false)
-      return
-    }
-
-    try {
-      setLoading(true)
-      console.log('Fetching clients for organization:', profile.organization_id)
-
-      // Only fetch clients from user's organization
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id, name, state, ams_code, client_number, producer_name, account_manager, logo_url')
-        .eq('organization_id', profile.organization_id)
-        .order('name', { ascending: true })
-
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
-      }
-
-      console.log('Fetched clients:', data?.length || 0)
-      setClients(data || [])
-    } catch (error) {
-      console.error('Error fetching clients:', error)
-      setError(error.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [profile?.organization_id])
-
-  // Fetch clients from Supabase (optimized with organization filter)
-  useEffect(() => {
-    if (user && profile) {
-      fetchClients()
-    } else if (!authLoading && user && !profile) {
-      setLoading(false)
-    }
-  }, [user, profile, authLoading, fetchClients])
 
   // Optimized search with useMemo
   const filteredClients = useMemo(() => {
@@ -203,7 +162,7 @@ export default function Home() {
         </div>
 
         {/* Loading State */}
-        {loading && (
+        {clientsLoading && (
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
             <p className="mt-4 text-gray-600 font-medium">Loading clients...</p>
@@ -211,10 +170,10 @@ export default function Home() {
         )}
 
         {/* Error State */}
-        {error && (
+        {isError && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-6 shadow-sm">
             <p className="text-red-800 font-medium">
-              Error loading clients: {error}
+              Error loading clients: {isError.message}
             </p>
             <p className="text-sm text-red-600 mt-2">
               Make sure you have set up your Supabase credentials in .env.local
@@ -223,7 +182,7 @@ export default function Home() {
         )}
 
         {/* Empty State */}
-        {!loading && !error && filteredClients.length === 0 && searchQuery && (
+        {!clientsLoading && !isError && filteredClients.length === 0 && searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
               <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,7 +194,7 @@ export default function Home() {
           </div>
         )}
 
-        {!loading && !error && clients.length === 0 && !searchQuery && (
+        {!clientsLoading && !isError && clients.length === 0 && !searchQuery && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#006B7D]/10 mb-4">
               <svg className="w-8 h-8 text-[#006B7D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +207,7 @@ export default function Home() {
         )}
 
         {/* Clients Grid */}
-        {!loading && !error && filteredClients.length > 0 && (
+        {!clientsLoading && !isError && filteredClients.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredClients.map(client => (
               <ClientCard key={client.id} client={client} />

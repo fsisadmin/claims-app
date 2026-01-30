@@ -67,7 +67,7 @@ export default function ClientDetailPage() {
   }, [searchParams])
 
   // Use SWR hooks for cached data fetching
-  const { client, isLoading: clientLoading } = useClient(params.id, profile?.organization_id)
+  const { client, isLoading: clientLoading, isError: clientError } = useClient(params.id, profile?.organization_id)
   const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
 
   // Fetch counts for tabs (fast - runs in parallel on initial load)
@@ -102,12 +102,19 @@ export default function ClientDetailPage() {
 
     setClaimsLoading(true)
     try {
+      // Optimized: only fetch columns used in ClaimsTable
       const { data, error } = await supabase
         .from('claims')
-        .select('*')
+        .select(`
+          id, claim_number, claimant, coverage, property_name, status,
+          loss_date, report_date, policy_number, loss_description,
+          total_incurred, total_paid, total_reserved,
+          claim_type, cause_of_loss, client_id, location_id
+        `)
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('report_date', { ascending: false })
+        .limit(200)
 
       if (error) throw error
       setClaims(data || [])
@@ -125,12 +132,18 @@ export default function ClientDetailPage() {
 
     setIncidentsLoading(true)
     try {
+      // Optimized: only fetch columns used in IncidentsTable
       const { data, error } = await supabase
         .from('incidents')
-        .select('*, locations(location_name, company)')
+        .select(`
+          id, incident_number, incident_date, incident_description,
+          incident_type, status, location_id, client_id,
+          locations(location_name, company)
+        `)
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('incident_number', { ascending: false })
+        .limit(200)
 
       if (error) throw error
       setIncidents(data || [])
@@ -166,7 +179,8 @@ export default function ClientDetailPage() {
     }
   }, [user, authLoading, router])
 
-  if (authLoading || clientLoading) {
+  // Show loading while auth loads, profile loads, or client loads
+  if (authLoading || !profile || clientLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Header />
@@ -180,8 +194,26 @@ export default function ClientDetailPage() {
     )
   }
 
-  if (!user || !client) {
+  if (!user) {
     return null
+  }
+
+  if (clientError || !client) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          <div className="text-center py-16">
+            <p className="text-gray-600 font-medium">
+              {clientError ? `Error: ${clientError.message}` : 'Client not found'}
+            </p>
+            <p className="text-gray-400 text-sm mt-2">
+              Client ID: {params.id} | Org ID: {profile?.organization_id || 'none'}
+            </p>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   const initials = getInitials(client.name)

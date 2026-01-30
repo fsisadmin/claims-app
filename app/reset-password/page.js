@@ -25,11 +25,17 @@ export default function ResetPasswordPage() {
       setSuccess(true)
     } catch (error) {
       console.error('Password reset error:', error)
-      // Better error message for configuration errors
+      // Better error messages based on error type
       if (error.message && (error.message.includes('Unexpected token') || error.message.includes('DOCTYPE'))) {
         setError('Server configuration error. Please ensure environment variables are set correctly on Render.')
+      } else if (error.message && error.message.includes('rate limit')) {
+        setError('Too many password reset requests. Please wait a few minutes and try again.')
+      } else if (error.message && error.message.includes('Email rate limit')) {
+        setError('Email sending limit reached. Please try again in about an hour.')
+      } else if (error.status === 422 || (error.message && error.message.includes('Unable to validate'))) {
+        setError('Unable to send email. Please check the Site URL is configured in Supabase.')
       } else {
-        setError(error.message || 'Failed to send reset email')
+        setError(error.message || 'Failed to send reset email. Please try again.')
       }
     } finally {
       setLoading(false)

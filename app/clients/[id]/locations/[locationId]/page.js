@@ -16,6 +16,8 @@ export default function LocationDetailPage() {
   const [editData, setEditData] = useState({})
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('lenders')
+  const [claims, setClaims] = useState([])
+  const [claimsLoading, setClaimsLoading] = useState(false)
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -27,6 +29,32 @@ export default function LocationDetailPage() {
       setEditData(location)
     }
   }, [location])
+
+  // Fetch claims for this location
+  useEffect(() => {
+    async function fetchClaims() {
+      if (!params.locationId || !profile?.organization_id) return
+
+      setClaimsLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('claims')
+          .select('*')
+          .eq('location_id', params.locationId)
+          .eq('organization_id', profile.organization_id)
+          .order('loss_date', { ascending: false })
+
+        if (error) throw error
+        setClaims(data || [])
+      } catch (error) {
+        console.error('Error fetching claims:', error)
+      } finally {
+        setClaimsLoading(false)
+      }
+    }
+
+    fetchClaims()
+  }, [params.locationId, profile?.organization_id])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -483,60 +511,117 @@ export default function LocationDetailPage() {
                 <div>
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-semibold text-gray-900">Claims History</h3>
-                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
+                    <button
+                      onClick={() => router.push(`/clients/${params.id}/claims/add?location=${params.locationId}`)}
+                      className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors"
+                    >
                       Add Claim
                     </button>
                   </div>
 
-                  {/* Claims Summary */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-600 mb-1">Open Claims</p>
-                      <p className="text-2xl font-bold text-gray-900">{location.open_claim_rollup || 0}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-600 mb-1">Total Open Claims Value</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {location.total_open_claims_rollup
-                          ? `$${Number(location.total_open_claims_rollup).toLocaleString()}`
-                          : '$0'
-                        }
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-600 mb-1">Loss Run Summary</p>
-                      <p className="text-sm font-medium text-gray-900">{location.loss_run_summary || '-'}</p>
-                    </div>
-                  </div>
+                  {/* Claims Summary - calculated from actual claims */}
+                  {(() => {
+                    const openClaims = claims.filter(c => c.status?.toUpperCase() === 'OPEN')
+                    const totalOpenValue = openClaims.reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
+                    const fiveYearsAgo = new Date()
+                    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+                    const recentClaims = claims.filter(c => new Date(c.loss_date) >= fiveYearsAgo)
+                    const propTotal = recentClaims.filter(c => c.claim_type?.toLowerCase().includes('prop') || c.coverage?.toLowerCase().includes('prop')).reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
+                    const glTotal = recentClaims.filter(c => c.claim_type?.toLowerCase().includes('liability') || c.coverage?.toLowerCase().includes('liability')).reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
 
-                  {/* 5-Year Incurred */}
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-blue-100 rounded-lg p-4 border border-blue-200">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Total Incurred (5 Years) - Property</p>
-                      <p className="text-2xl font-bold text-blue-900">
-                        {location.total_incurred_five_years_prop
-                          ? `$${Number(location.total_incurred_five_years_prop).toLocaleString()}`
-                          : '$0'
-                        }
-                      </p>
-                    </div>
-                    <div className="bg-emerald-100 rounded-lg p-4 border border-emerald-200">
-                      <p className="text-sm font-medium text-emerald-800 mb-1">Total Incurred (5 Years) - GL</p>
-                      <p className="text-2xl font-bold text-emerald-900">
-                        {location.total_incurred_five_years_gl
-                          ? `$${Number(location.total_incurred_five_years_gl).toLocaleString()}`
-                          : '$0'
-                        }
-                      </p>
-                    </div>
-                  </div>
+                    return (
+                      <>
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm text-gray-600 mb-1">Open Claims</p>
+                            <p className="text-2xl font-bold text-gray-900">{openClaims.length}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm text-gray-600 mb-1">Total Open Claims Value</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                              ${totalOpenValue.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm text-gray-600 mb-1">Loss Run Summary</p>
+                            <p className="text-sm font-medium text-gray-900">{location.loss_run_summary || '-'}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                          <div className="bg-blue-100 rounded-lg p-4 border border-blue-200">
+                            <p className="text-sm font-medium text-blue-800 mb-1">Total Incurred (5 Years) - Property</p>
+                            <p className="text-2xl font-bold text-blue-900">
+                              ${propTotal.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="bg-emerald-100 rounded-lg p-4 border border-emerald-200">
+                            <p className="text-sm font-medium text-emerald-800 mb-1">Total Incurred (5 Years) - GL</p>
+                            <p className="text-2xl font-bold text-emerald-900">
+                              ${glTotal.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
 
                   {/* Claims List */}
                   <div className="border-t border-gray-200 pt-6">
                     <h4 className="text-md font-semibold text-gray-900 mb-4">Claims List</h4>
-                    {location.claims ? (
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                        {location.claims}
+                    {claimsLoading ? (
+                      <div className="text-center py-8">
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                        <p className="mt-2 text-gray-600">Loading claims...</p>
+                      </div>
+                    ) : claims.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Claim #</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date of Loss</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total Incurred</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {claims.map(claim => (
+                              <tr
+                                key={claim.id}
+                                onClick={() => router.push(`/claims/${claim.id}`)}
+                                className="hover:bg-gray-50 cursor-pointer"
+                              >
+                                <td className="px-4 py-3 text-sm font-medium text-[#006B7D]">
+                                  {claim.claim_number || '-'}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {claim.loss_date ? new Date(claim.loss_date).toLocaleDateString() : '-'}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {claim.claim_type || claim.coverage || '-'}
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    claim.status?.toUpperCase() === 'OPEN'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {claim.status || '-'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {claim.total_incurred ? `$${Number(claim.total_incurred).toLocaleString()}` : '-'}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
+                                  {claim.loss_description || '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">

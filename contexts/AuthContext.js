@@ -1,11 +1,14 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getUserProfile } from '@/lib/auth'
 
 const AuthContext = createContext({})
+
+// Simple in-memory cache for profile
+let profileCache = null
+let profileCacheUserId = null
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
@@ -17,16 +20,23 @@ export const useAuth = () => {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState(profileCache)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const loadingRef = useRef(false)
 
   useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        loadUserProfile(session.user.id)
+        // Use cached profile if available for this user
+        if (profileCache && profileCacheUserId === session.user.id) {
+          setProfile(profileCache)
+          setLoading(false)
+        } else {
+          loadUserProfile(session.user.id)
+        }
       } else {
         setLoading(false)
       }
@@ -39,13 +49,23 @@ export function AuthProvider({ children }) {
       setUser(session?.user ?? null)
 
       if (session?.user) {
-        await loadUserProfile(session.user.id)
+        // Use cached profile if available for this user
+        if (profileCache && profileCacheUserId === session.user.id) {
+          setProfile(profileCache)
+          setLoading(false)
+        } else {
+          await loadUserProfile(session.user.id)
+        }
       } else {
         setProfile(null)
+        profileCache = null
+        profileCacheUserId = null
         setLoading(false)
       }
 
       if (event === 'SIGNED_OUT') {
+        profileCache = null
+        profileCacheUserId = null
         router.push('/login')
       }
     })
@@ -55,40 +75,30 @@ export function AuthProvider({ children }) {
     }
   }, [router])
 
-  async function loadUserProfile(userId, retryCount = 0) {
-    const maxRetries = 2
-    const timeout = 15000 // 15 seconds
+  async function loadUserProfile(userId) {
+    // Prevent duplicate requests
+    if (loadingRef.current) return
+    loadingRef.current = true
 
     try {
-      console.log('🔍 Loading profile for user:', userId, retryCount > 0 ? `(retry ${retryCount})` : '')
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email, role, organization_id, organizations(id, name)')
+        .eq('id', userId)
+        .single()
 
-      // Add timeout protection
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Profile loading timeout after ${timeout/1000}s`)), timeout)
-      )
+      if (error) throw error
 
-      const profilePromise = getUserProfile(userId)
-      const profileData = await Promise.race([profilePromise, timeoutPromise])
-
-      console.log('✅ Profile loaded:', profileData)
-      setProfile(profileData)
-      setLoading(false)
+      // Cache the profile
+      profileCache = data
+      profileCacheUserId = userId
+      setProfile(data)
     } catch (error) {
-      console.error('❌ Error loading user profile:', error)
-      console.error('Error details:', error.message)
-
-      // Retry on timeout or network errors
-      if (retryCount < maxRetries && (error.message.includes('timeout') || error.message.includes('fetch'))) {
-        console.log(`🔄 Retrying profile load... (attempt ${retryCount + 2}/${maxRetries + 1})`)
-        // Small delay before retry
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        return loadUserProfile(userId, retryCount + 1)
-      }
-
-      // Set profile to null on error but user can still see they're logged in
-      console.log('🏁 Setting loading to false after error')
+      console.error('Error loading profile:', error)
       setProfile(null)
+    } finally {
       setLoading(false)
+      loadingRef.current = false
     }
   }
 

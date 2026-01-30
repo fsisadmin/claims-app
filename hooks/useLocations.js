@@ -3,6 +3,17 @@
 import useSWR from 'swr'
 import { supabase } from '@/lib/supabase'
 
+// Columns needed for locations list view (reduces payload from 100+ to ~20 columns)
+const LOCATIONS_LIST_COLUMNS = `
+  id, location_name, company, entity_name,
+  street_address, city, state, zip, county,
+  num_buildings, num_units, square_footage,
+  construction_description, orig_year_built,
+  real_property_value, personal_property_value, total_tiv,
+  tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
+  client_id, organization_id
+`
+
 // Fetcher function for locations
 async function fetchLocations({ clientId, organizationId }) {
   if (!clientId || !organizationId) {
@@ -11,10 +22,11 @@ async function fetchLocations({ clientId, organizationId }) {
 
   const { data, error } = await supabase
     .from('locations')
-    .select('*')
+    .select(LOCATIONS_LIST_COLUMNS)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
     .order('location_name', { ascending: true })
+    .limit(500) // Prevent unbounded queries
 
   if (error) throw error
   return data || []
@@ -108,6 +120,43 @@ export function useClient(clientId, organizationId) {
 
   return {
     client: data,
+    isLoading,
+    isError: error,
+    refresh: mutate,
+    mutate,
+  }
+}
+
+// Fetcher function for all clients in organization
+async function fetchClients({ organizationId }) {
+  if (!organizationId) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name, state, ams_code, client_number, producer_name, account_manager, logo_url')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+// Custom hook for fetching all clients with SWR caching
+export function useClients(organizationId) {
+  const { data, error, isLoading, mutate } = useSWR(
+    organizationId ? ['clients', organizationId] : null,
+    () => fetchClients({ organizationId }),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 5000,
+    }
+  )
+
+  return {
+    clients: data || [],
     isLoading,
     isError: error,
     refresh: mutate,

@@ -9,15 +9,46 @@ export default function UpdatePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [isReady, setIsReady] = useState(false)
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: '',
   })
 
-  // Check if user has valid reset token
+  // Handle password recovery flow
   useEffect(() => {
+    // Listen for auth state changes, particularly PASSWORD_RECOVERY
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event)
+
+      if (event === 'PASSWORD_RECOVERY') {
+        // User clicked the recovery link and Supabase processed the token
+        console.log('Password recovery session established')
+        setIsReady(true)
+        setError(null)
+      } else if (event === 'SIGNED_IN' && session) {
+        // Also handle SIGNED_IN as recovery might trigger this
+        setIsReady(true)
+        setError(null)
+      }
+    })
+
+    // Check for existing session or hash params
     const checkSession = async () => {
       try {
+        // First check if there are hash params that need processing
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const type = hashParams.get('type')
+
+        if (accessToken && type === 'recovery') {
+          // There's a recovery token in the URL - Supabase will process it
+          // via onAuthStateChange, just wait
+          console.log('Recovery token found in URL, waiting for Supabase to process...')
+          return
+        }
+
+        // Check existing session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
         if (sessionError) {
@@ -26,18 +57,12 @@ export default function UpdatePasswordPage() {
           return
         }
 
-        if (!session) {
-          // Check for hash params (Supabase sends recovery token in URL hash)
-          const hashParams = new URLSearchParams(window.location.hash.substring(1))
-          const accessToken = hashParams.get('access_token')
-          const type = hashParams.get('type')
-
-          if (accessToken && type === 'recovery') {
-            // Valid recovery token in URL, supabase will handle it
-            console.log('Valid recovery token found')
-          } else {
-            setError('Invalid or expired reset link. Please request a new password reset.')
-          }
+        if (session) {
+          // Already have a valid session
+          setIsReady(true)
+        } else {
+          // No session and no recovery token
+          setError('Invalid or expired reset link. Please request a new password reset.')
         }
       } catch (err) {
         console.error('Error checking session:', err)
@@ -45,7 +70,13 @@ export default function UpdatePasswordPage() {
       }
     }
 
-    checkSession()
+    // Small delay to allow Supabase to process hash params first
+    const timer = setTimeout(checkSession, 100)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timer)
+    }
   }, [])
 
   const handleChange = e => {
@@ -92,6 +123,18 @@ export default function UpdatePasswordPage() {
     }
   }
 
+  // Show loading while waiting for recovery session
+  if (!isReady && !error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#006B7D]"></div>
+          <p className="mt-4 text-gray-600 font-medium">Verifying reset link...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -125,6 +168,7 @@ export default function UpdatePasswordPage() {
           </div>
         )}
 
+        {isReady && (
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
@@ -178,6 +222,7 @@ export default function UpdatePasswordPage() {
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   )
