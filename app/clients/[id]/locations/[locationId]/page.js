@@ -103,7 +103,7 @@ export default function LocationDetailPage() {
     return 'text-gray-700'
   }
 
-  if (authLoading || locationLoading) {
+  if (authLoading || !profile || locationLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Header />
@@ -117,8 +117,21 @@ export default function LocationDetailPage() {
     )
   }
 
-  if (!user || !location) {
+  if (!user) {
     return null
+  }
+
+  if (!location) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="max-w-5xl mx-auto px-6 py-8">
+          <div className="text-center py-16">
+            <p className="text-gray-600 font-medium">Location not found</p>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   // SOV Single Line columns

@@ -220,7 +220,7 @@ export default function ClaimDetailPage() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || !profile || loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
