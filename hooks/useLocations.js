@@ -53,18 +53,6 @@ export function useLocations(clientId, organizationId) {
   }
 }
 
-// Columns needed for single location view (detail page)
-const LOCATION_DETAIL_COLUMNS = `
-  id, location_name, company, entity_name,
-  street_address, city, state, zip, county, country,
-  num_buildings, num_units, square_footage,
-  construction_description, orig_year_built, year_renovated,
-  real_property_value, personal_property_value, total_tiv,
-  tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
-  latitude, longitude, occupancy_type, sprinkler_type,
-  client_id, organization_id, created_at, updated_at
-`
-
 // Fetcher function for a single location
 async function fetchLocation({ locationId, organizationId }) {
   if (!locationId || !organizationId) {
@@ -73,7 +61,7 @@ async function fetchLocation({ locationId, organizationId }) {
 
   const { data, error } = await supabase
     .from('locations')
-    .select(LOCATION_DETAIL_COLUMNS)
+    .select('*')
     .eq('id', locationId)
     .eq('organization_id', organizationId)
     .single()
