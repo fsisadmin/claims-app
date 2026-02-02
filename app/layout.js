@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Franklin Street Claims App",
+  title: "Risky Business",
   description: "Client and claims management system",
 };
 

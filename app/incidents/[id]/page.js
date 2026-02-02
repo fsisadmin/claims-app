@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
+import TasksSection from '@/components/TasksSection'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -46,6 +47,9 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState(null)
   const [showFullDetails, setShowFullDetails] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+
+  // Users for task assignment
+  const [users, setUsers] = useState([])
 
   // Sidebar data
   const [tasks, setTasks] = useState([])
@@ -152,6 +156,19 @@ export default function IncidentDetailPage() {
       fetchSidebarData()
     }
   }, [user, profile, fetchIncident, fetchSidebarData])
+
+  // Fetch users for task assignment dropdown
+  useEffect(() => {
+    async function fetchUsers() {
+      if (!profile?.organization_id) return
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .order('full_name')
+      setUsers(data || [])
+    }
+    fetchUsers()
+  }, [profile?.organization_id])
 
   // Handle create claim from incident
   const handleCreateClaim = () => {
@@ -352,6 +369,20 @@ export default function IncidentDetailPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Tasks Section */}
+        <div className="mb-4">
+          <TasksSection
+            clientId={incident.client_id}
+            clientName={incident.clients?.name}
+            linkedEntityType="incident"
+            linkedEntityId={params.id}
+            linkedEntityName={incident.incident_number ? `Incident ${incident.incident_number}` : 'Incident'}
+            organizationId={profile.organization_id}
+            userId={user.id}
+            users={users}
+          />
         </div>
 
         {/* Main Content with Sidebar */}

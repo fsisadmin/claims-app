@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
 import CommentSidebar from '@/components/CommentSidebar'
+import TasksSection from '@/components/TasksSection'
 import { supabase } from '@/lib/supabase'
 import { useLocation, useClient } from '@/hooks'
 
@@ -13,11 +14,13 @@ export default function LocationDetailPage() {
   const params = useParams()
   const { user, profile, loading: authLoading } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
+  const [isSovEditing, setIsSovEditing] = useState(false)
   const [editData, setEditData] = useState({})
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('lenders')
   const [claims, setClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
+  const [users, setUsers] = useState([])
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -57,6 +60,19 @@ export default function LocationDetailPage() {
     fetchClaims()
   }, [params.locationId, profile?.organization_id])
 
+  // Fetch users for task assignment dropdown
+  useEffect(() => {
+    async function fetchUsers() {
+      if (!profile?.organization_id) return
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .order('full_name')
+      setUsers(data || [])
+    }
+    fetchUsers()
+  }, [profile?.organization_id])
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -78,6 +94,7 @@ export default function LocationDetailPage() {
       // Update the SWR cache with new data
       mutateLocation(editData, false)
       setIsEditing(false)
+      setIsSovEditing(false)
     } catch (error) {
       console.error('Error saving location:', error)
       alert('Failed to save changes')
@@ -328,8 +345,36 @@ export default function LocationDetailPage() {
 
         {/* SOV Single Line */}
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-[#006B7D] mb-1">SOV Single Line</h2>
-          <p className="text-sm text-gray-500 mb-4">Edit location details here</p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-[#006B7D] mb-1">SOV Single Line</h2>
+              <p className="text-sm text-gray-500">Click edit to modify location details</p>
+            </div>
+            {!isSovEditing ? (
+              <button
+                onClick={() => setIsSovEditing(true)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Edit
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setIsSovEditing(false); setEditData(location) }}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full">
@@ -353,12 +398,21 @@ export default function LocationDetailPage() {
                         key={col.key}
                         className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap border-r border-gray-100 last:border-r-0"
                       >
-                        {col.key.includes('value') || col.key === 'total_tiv'
-                          ? location[col.key]
-                            ? `$${Number(location[col.key]).toLocaleString()}`
-                            : '-'
-                          : location[col.key] || '-'
-                        }
+                        {isSovEditing ? (
+                          <input
+                            type={col.key.includes('value') || col.key === 'total_tiv' || col.key === 'num_buildings' || col.key === 'num_units' || col.key === 'square_footage' || col.key === 'orig_year_built' ? 'number' : 'text'}
+                            value={editData[col.key] || ''}
+                            onChange={(e) => handleInputChange(col.key, e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900 text-sm"
+                            style={{ minWidth: col.width - 16 }}
+                          />
+                        ) : (
+                          col.key.includes('value') || col.key === 'total_tiv'
+                            ? location[col.key]
+                              ? `$${Number(location[col.key]).toLocaleString()}`
+                              : '-'
+                            : location[col.key] || '-'
+                        )}
                       </td>
                     ))}
                   </tr>
@@ -367,6 +421,18 @@ export default function LocationDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Tasks Section */}
+        <TasksSection
+          clientId={params.id}
+          clientName={client?.name}
+          linkedEntityType="location"
+          linkedEntityId={params.locationId}
+          linkedEntityName={location.location_name || location.street_address}
+          organizationId={profile.organization_id}
+          userId={user.id}
+          users={users}
+        />
 
         {/* Tabs Section */}
         <div className="mb-8">

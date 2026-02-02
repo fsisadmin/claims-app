@@ -9,6 +9,7 @@ import LocationsTable from '@/components/LocationsTable'
 import ClaimsTable from '@/components/ClaimsTable'
 import IncidentsTable from '@/components/IncidentsTable'
 import CommentSidebar from '@/components/CommentSidebar'
+import TasksSection from '@/components/TasksSection'
 import { useClient, useLocations, trackClientView } from '@/hooks'
 
 // Function to generate initials from company name
@@ -57,6 +58,7 @@ export default function ClientDetailPage() {
   const [incidentsLoading, setIncidentsLoading] = useState(false)
   const [incidentsFetched, setIncidentsFetched] = useState(false)
   const [activeTab, setActiveTab] = useState('locations')
+  const [users, setUsers] = useState([])
 
   // Check URL for tab param
   useEffect(() => {
@@ -160,6 +162,19 @@ export default function ClientDetailPage() {
       fetchCounts()
     }
   }, [user, profile, fetchCounts])
+
+  // Fetch users for task assignment dropdown
+  useEffect(() => {
+    async function fetchUsers() {
+      if (!profile?.organization_id) return
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .order('full_name')
+      setUsers(data || [])
+    }
+    fetchUsers()
+  }, [profile?.organization_id])
 
   // Fetch full data only when tab is clicked
   useEffect(() => {
@@ -355,6 +370,15 @@ export default function ClientDetailPage() {
             </button>
           </div>
         </div>
+
+        {/* Tasks Section */}
+        <TasksSection
+          clientId={params.id}
+          clientName={client.name}
+          organizationId={profile.organization_id}
+          userId={user.id}
+          users={users}
+        />
 
         {/* Tabs Section */}
         <div className="bg-white rounded-3xl shadow-md overflow-hidden">

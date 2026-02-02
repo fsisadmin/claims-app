@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
 import CommentSidebar from '@/components/CommentSidebar'
+import TasksSection from '@/components/TasksSection'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -91,6 +92,7 @@ export default function ClaimDetailPage() {
   const [error, setError] = useState(null)
   const [showFullDetails, setShowFullDetails] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [users, setUsers] = useState([])
 
   // Fetch claim data
   const fetchClaim = useCallback(async () => {
@@ -141,6 +143,19 @@ export default function ClaimDetailPage() {
       fetchClaim()
     }
   }, [user, profile, fetchClaim])
+
+  // Fetch users for task assignment dropdown
+  useEffect(() => {
+    async function fetchUsers() {
+      if (!profile?.organization_id) return
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .order('full_name')
+      setUsers(data || [])
+    }
+    fetchUsers()
+  }, [profile?.organization_id])
 
   // Get financial data by category
   const getFinancialByCategory = (category) => {
@@ -427,6 +442,20 @@ export default function ClaimDetailPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Tasks Section */}
+        <div className="mb-4">
+          <TasksSection
+            clientId={claim.client_id}
+            clientName={claim.clients?.name}
+            linkedEntityType="claim"
+            linkedEntityId={params.id}
+            linkedEntityName={claim.claim_number ? `Claim ${claim.claim_number}` : 'Claim'}
+            organizationId={profile.organization_id}
+            userId={user.id}
+            users={users}
+          />
         </div>
 
         {/* Current Financials Card */}

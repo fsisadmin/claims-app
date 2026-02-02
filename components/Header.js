@@ -5,12 +5,18 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
+import { useMyTasks } from '@/hooks'
 
 export default function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const { profile, isAdmin } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
+
+  // Get user's open tasks for notification badge
+  const { tasks: myTasks } = useMyTasks(profile?.id, profile?.organization_id)
+  const overdueCount = myTasks.filter(t => t.due_date && new Date(t.due_date) < new Date()).length
+  const taskCount = myTasks.length
 
   const handleLogout = async () => {
     try {
@@ -36,11 +42,11 @@ export default function Header() {
       <div className="px-6 py-3 flex items-center justify-between">
         {/* Logo and Navigation */}
         <div className="flex items-center gap-8">
-          {/* Franklin Street Logo */}
+          {/* Risky Business Logo */}
           <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
             <img
               src="/favicon.ico"
-              alt="Franklin Street"
+              alt="Risky Business"
               className="h-10 w-auto"
             />
           </Link>
@@ -54,6 +60,21 @@ export default function Header() {
               }`}
             >
               Clients
+            </Link>
+            <Link
+              href="/tasks"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all relative ${
+                pathname === '/tasks' ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Tasks
+              {taskCount > 0 && (
+                <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-xs font-bold rounded-full ${
+                  overdueCount > 0 ? 'bg-red-500 text-white' : 'bg-[#006B7D] text-white'
+                }`}>
+                  {taskCount}
+                </span>
+              )}
             </Link>
             {isAdmin && (
               <>

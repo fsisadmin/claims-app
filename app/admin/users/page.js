@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
-import { getOrganizationUsers, updateUserRole, updateUserOrganization } from '@/lib/auth'
+import { getAllUsers, updateUserRole, updateUserOrganization } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminUsers() {
@@ -25,15 +25,15 @@ export default function AdminUsers() {
 
   // Fetch users
   useEffect(() => {
-    if (profile?.organization_id && isAdmin) {
+    if (isAdmin) {
       fetchUsers()
     }
-  }, [profile, isAdmin])
+  }, [isAdmin])
 
   async function fetchUsers() {
     try {
       setLoading(true)
-      const data = await getOrganizationUsers(profile.organization_id)
+      const data = await getAllUsers()
       setUsers(data || [])
     } catch (error) {
       console.error('Error fetching users:', error)
@@ -139,6 +139,9 @@ export default function AdminUsers() {
                       Email
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Organization
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Role
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -173,6 +176,9 @@ export default function AdminUsers() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{usr.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{usr.organizations?.name || '-'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {editingUserId === usr.id ? (
