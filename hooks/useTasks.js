@@ -90,7 +90,8 @@ export function useTasks(organizationId, filters = {}) {
     tasksFetcher,
     {
       revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // Cache for 1 minute
     }
   )
 
@@ -126,8 +127,10 @@ export function useMyTasks(userId, organizationId) {
     userId && organizationId ? ['myTasks', userId, organizationId] : null,
     myTasksFetcher,
     {
-      revalidateOnFocus: true,
-      refreshInterval: 60000, // Refresh every minute
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // Dedupe requests for 1 minute
+      refreshInterval: 120000, // Refresh every 2 minutes instead of 1
     }
   )
 

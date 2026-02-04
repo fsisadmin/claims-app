@@ -41,7 +41,7 @@ export function useLocations(clientId, organizationId) {
     {
       revalidateOnFocus: false, // Don't refetch when window gains focus
       revalidateOnReconnect: true, // Refetch when reconnecting
-      dedupingInterval: 5000, // Dedupe requests within 5 seconds
+      dedupingInterval: 30000, // Dedupe requests within 5 seconds
     }
   )
 
@@ -78,7 +78,7 @@ export function useLocation(locationId, organizationId) {
     () => fetchLocation({ locationId, organizationId }),
     {
       revalidateOnFocus: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000,
     }
   )
 
@@ -115,7 +115,7 @@ export function useClient(clientId, organizationId) {
     () => fetchClient({ clientId, organizationId }),
     {
       revalidateOnFocus: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000,
     }
   )
 
@@ -159,7 +159,7 @@ export function useClientsPaginated(organizationId, page = 0, pageSize = 50) {
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000,
     }
   )
 
@@ -199,7 +199,7 @@ export function useClients(organizationId) {
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000,
     }
   )
 
@@ -278,7 +278,7 @@ export function useRecentClients(organizationId) {
     () => fetchRecentClients({ clientIds, organizationId }),
     {
       revalidateOnFocus: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000,
     }
   )
 
