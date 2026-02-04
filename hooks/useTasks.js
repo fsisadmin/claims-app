@@ -144,10 +144,18 @@ export function useMyTasks(userId, organizationId) {
 
 // Create a new task
 export async function createTask(taskData, organizationId, userId) {
+  // Sanitize UUID fields - convert empty strings to null
+  const sanitizedData = {
+    ...taskData,
+    assigned_to: taskData.assigned_to || null,
+    client_id: taskData.client_id || null,
+    linked_entity_id: taskData.linked_entity_id || null,
+  }
+
   const { data, error } = await supabase
     .from('tasks')
     .insert({
-      ...taskData,
+      ...sanitizedData,
       organization_id: organizationId,
       owner_id: userId,
       created_by: userId,
@@ -162,10 +170,18 @@ export async function createTask(taskData, organizationId, userId) {
 
 // Update a task
 export async function updateTask(taskId, taskData, organizationId, userId) {
+  // Sanitize UUID fields - convert empty strings to null
+  const sanitizedData = {
+    ...taskData,
+    assigned_to: taskData.assigned_to || null,
+    client_id: taskData.client_id || null,
+    linked_entity_id: taskData.linked_entity_id || null,
+  }
+
   const { data, error } = await supabase
     .from('tasks')
     .update({
-      ...taskData,
+      ...sanitizedData,
       modified_by: userId,
     })
     .eq('id', taskId)
