@@ -23,7 +23,11 @@ const tasksFetcher = async ([, organizationId, filters]) => {
     query = query.eq('status', filters.status)
   }
   if (filters?.assignedTo) {
-    query = query.eq('assigned_to', filters.assignedTo)
+    if (filters.assignedTo === 'unassigned') {
+      query = query.is('assigned_to', null)
+    } else {
+      query = query.eq('assigned_to', filters.assignedTo)
+    }
   }
   if (filters?.clientId) {
     query = query.eq('client_id', filters.clientId)
@@ -71,7 +75,7 @@ const myTasksFetcher = async ([, userId, organizationId]) => {
     `)
     .eq('organization_id', organizationId)
     .eq('assigned_to', userId)
-    .in('status', ['open', 'in_progress'])
+    .in('status', ['assigned', 'in_progress'])
     .order('due_date', { ascending: true, nullsFirst: false })
     .order('priority', { ascending: false })
 

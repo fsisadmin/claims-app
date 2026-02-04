@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
 import { useTasks, createTask, updateTask, closeTask, deleteTask } from '@/hooks'
@@ -11,15 +11,19 @@ import { saveAs } from 'file-saver'
 
 export default function TasksPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
-  const [statusFilter, setStatusFilter] = useState('open')
+  const [statusFilter, setStatusFilter] = useState('assigned')
+  const [assigneeFilter, setAssigneeFilter] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [users, setUsers] = useState([])
   const [clients, setClients] = useState([])
+  const [autoOpenTaskId, setAutoOpenTaskId] = useState(null)
 
   const { tasks, isLoading, mutate } = useTasks(profile?.organization_id, {
-    status: statusFilter === 'all' ? null : statusFilter
+    status: statusFilter === 'all' ? null : statusFilter,
+    assignedTo: assigneeFilter === 'all' ? null : assigneeFilter === 'unassigned' ? 'unassigned' : assigneeFilter
   })
 
   // Fetch users and clients for dropdowns
@@ -44,6 +48,28 @@ export default function TasksPage() {
     }
     fetchData()
   }, [profile?.organization_id])
+
+  // Check for task ID in URL query param to auto-open
+  useEffect(() => {
+    const taskId = searchParams.get('task')
+    if (taskId) {
+      setAutoOpenTaskId(taskId)
+      // Clear the URL param without reloading
+      router.replace('/tasks', { scroll: false })
+    }
+  }, [searchParams, router])
+
+  // Auto-open task modal when task ID is set and tasks are loaded
+  useEffect(() => {
+    if (autoOpenTaskId && tasks.length > 0) {
+      const taskToOpen = tasks.find(t => t.id === autoOpenTaskId)
+      if (taskToOpen) {
+        setEditingTask(taskToOpen)
+        setShowCreateModal(true)
+      }
+      setAutoOpenTaskId(null)
+    }
+  }, [autoOpenTaskId, tasks])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -80,10 +106,9 @@ export default function TasksPage() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'open': return 'bg-yellow-100 text-yellow-800'
+      case 'assigned': return 'bg-yellow-100 text-yellow-800'
       case 'in_progress': return 'bg-blue-100 text-blue-800'
       case 'completed': return 'bg-green-100 text-green-800'
-      case 'closed': return 'bg-gray-100 text-gray-800'
       case 'cancelled': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
@@ -91,7 +116,7 @@ export default function TasksPage() {
 
   const isOverdue = (dueDate, status) => {
     if (!dueDate) return false
-    return new Date(dueDate) < new Date() && !['completed', 'closed', 'cancelled'].includes(status)
+    return new Date(dueDate) < new Date() && !['completed', 'cancelled'].includes(status)
   }
 
   return (
@@ -118,22 +143,42 @@ export default function TasksPage() {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-700">Status:</span>
-            <div className="flex gap-2">
-              {['all', 'open', 'in_progress', 'completed', 'closed'].map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    statusFilter === status
-                      ? 'bg-[#006B7D] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
-                </button>
-              ))}
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-700">Status:</span>
+              <div className="flex gap-2">
+                {['all', 'assigned', 'in_progress', 'completed', 'cancelled'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      statusFilter === status
+                        ? 'bg-[#006B7D] text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-700">Assigned To:</span>
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white focus:ring-2 focus:ring-[#006B7D] focus:border-transparent"
+              >
+                <option value="all">All Users</option>
+                <option value={user.id}>My Tasks</option>
+                <option value="unassigned">Unassigned</option>
+                {users.filter(u => u.id !== user.id).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name || u.email}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -256,7 +301,7 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
     assigned_to: task?.assigned_to || '',
     due_date: task?.due_date || '',
     priority: task?.priority || 'normal',
-    status: task?.status || 'open',
+    status: task?.status || 'assigned',
     linked_entity_type: task?.linked_entity_type || '',
     linked_entity_id: task?.linked_entity_id || '',
     linked_entity_name: task?.linked_entity_name || '',
@@ -267,6 +312,7 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
   const [loadingEntities, setLoadingEntities] = useState(false)
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
+  const [stagedFiles, setStagedFiles] = useState([]) // Files to upload on new task creation
 
   // Load entity options for a category (without clearing form values)
   async function loadEntityOptions(category, clientId) {
@@ -356,50 +402,100 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
     loadAttachments()
   }, [task?.id])
 
-  // Upload attachment
+  // Upload attachment (or stage for new task)
   async function handleFileUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file || !task?.id) return
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
 
-    setUploading(true)
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${task.id}/${Date.now()}.${fileExt}`
-      const storagePath = `task-attachments/${fileName}`
+    if (task?.id) {
+      // Existing task - upload immediately
+      setUploading(true)
+      for (const file of files) {
+        try {
+          const fileExt = file.name.split('.').pop()
+          const fileName = `${task.id}/${Date.now()}-${Math.random().toString(36).substring(2, 11)}.${fileExt}`
+          const storagePath = `task-attachments/${fileName}`
 
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(storagePath, file)
+          const { error: uploadError } = await supabase.storage
+            .from('attachments')
+            .upload(storagePath, file)
 
-      if (uploadError) throw uploadError
+          if (uploadError) throw uploadError
 
-      // Save attachment record (no public URL - we'll use signed URLs for private access)
-      const { data, error } = await supabase
-        .from('entity_attachments')
-        .insert({
-          organization_id: organizationId,
-          entity_type: 'task',
-          entity_id: task.id,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          file_url: null, // Private bucket - use signed URLs
-          storage_path: storagePath,
-          uploaded_by: userId,
-        })
-        .select()
-        .single()
+          const { data, error } = await supabase
+            .from('entity_attachments')
+            .insert({
+              organization_id: organizationId,
+              entity_type: 'task',
+              entity_id: task.id,
+              file_name: file.name,
+              file_type: file.type,
+              file_size: file.size,
+              file_url: null,
+              storage_path: storagePath,
+              uploaded_by: userId,
+            })
+            .select()
+            .single()
 
-      if (error) throw error
-      setAttachments(prev => [data, ...prev])
-    } catch (error) {
-      console.error('Error uploading file:', error)
-      alert('Failed to upload file')
-    } finally {
+          if (error) throw error
+          setAttachments(prev => [data, ...prev])
+        } catch (error) {
+          console.error('Error uploading file:', error)
+          alert(`Failed to upload ${file.name}`)
+        }
+      }
       setUploading(false)
-      e.target.value = ''
+    } else {
+      // New task - stage files for later upload
+      setStagedFiles(prev => [...prev, ...files])
     }
+    e.target.value = ''
+  }
+
+  // Remove staged file
+  function removeStagedFile(index) {
+    setStagedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Upload staged files after task creation
+  async function uploadStagedFiles(taskId) {
+    for (const file of stagedFiles) {
+      try {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${taskId}/${Date.now()}-${Math.random().toString(36).substring(2, 11)}.${fileExt}`
+        const storagePath = `task-attachments/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(storagePath, file)
+
+        if (uploadError) throw uploadError
+
+        await supabase
+          .from('entity_attachments')
+          .insert({
+            organization_id: organizationId,
+            entity_type: 'task',
+            entity_id: taskId,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            storage_path: storagePath,
+            uploaded_by: userId,
+          })
+      } catch (error) {
+        console.error('Error uploading staged file:', error)
+      }
+    }
+  }
+
+  // Format file size
+  function formatFileSize(bytes) {
+    if (!bytes) return '0 B'
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
   // Get signed URL for private file download (valid for 1 hour)
@@ -536,7 +632,12 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
       if (task) {
         await updateTask(task.id, formData, organizationId, userId)
       } else {
-        await createTask(formData, organizationId, userId)
+        // Create task and get the new task ID
+        const newTask = await createTask(formData, organizationId, userId)
+        // Upload any staged files
+        if (stagedFiles.length > 0 && newTask?.id) {
+          await uploadStagedFiles(newTask.id)
+        }
       }
       onSave()
     } catch (error) {
@@ -751,10 +852,9 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
                 onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
               >
-                <option value="open">Open</option>
+                <option value="assigned">Assigned</option>
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
-                <option value="closed">Closed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
@@ -864,9 +964,48 @@ function TaskModal({ task, users, clients, organizationId, userId, onClose, onSa
             </div>
           ) : (
             <div className="border-t border-gray-200 pt-4">
-              <p className="text-sm text-gray-400 text-center py-2">
-                Save task first to add supporting documents
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Supporting Documents {stagedFiles.length > 0 && `(${stagedFiles.length})`}
+                </label>
+                <label className="cursor-pointer px-3 py-1.5 text-sm font-medium rounded-lg transition-colors bg-[#006B7D]/10 text-[#006B7D] hover:bg-[#006B7D]/20">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  + Add Files
+                </label>
+              </div>
+
+              {stagedFiles.length > 0 ? (
+                <div className="space-y-2">
+                  {stagedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-blue-50 rounded-lg text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <span className="truncate text-gray-700">{file.name}</span>
+                        <span className="text-gray-400 text-xs flex-shrink-0">({formatFileSize(file.size)})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeStagedFile(index)}
+                        className="p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-gray-500">Files will be uploaded when the task is created.</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-2">No files attached</p>
+              )}
             </div>
           )}
 

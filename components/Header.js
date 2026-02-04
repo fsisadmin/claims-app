@@ -59,7 +59,7 @@ export default function Header() {
                 pathname === '/' ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              Clients
+              Home
             </Link>
             <Link
               href="/tasks"
