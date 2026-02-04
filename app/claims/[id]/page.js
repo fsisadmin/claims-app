@@ -53,9 +53,17 @@ function DetailRow({ label, value, isLink, href, isCheckbox, checked }) {
   )
 }
 
-// Financial row component
-function FinancialRow({ category, data, isExpandable = true, isNegative = false }) {
+// Financial row component - supports edit mode
+function FinancialRow({ category, data, isExpandable = true, isNegative = false, isEditing, onChange }) {
   const [expanded, setExpanded] = useState(false)
+
+  const handleInputChange = (field, value) => {
+    // Parse the value, allowing empty string to be 0
+    const numValue = value === '' ? 0 : parseFloat(value) || 0
+    onChange(category, field, numValue)
+  }
+
+  const inputClasses = "w-full text-right text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
@@ -73,10 +81,40 @@ function FinancialRow({ category, data, isExpandable = true, isNegative = false 
           <span className={isNegative ? 'text-gray-500' : ''}>{category}</span>
         </div>
       </td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.reserves || 0)}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.paid || 0)}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.outstanding || 0)}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(data?.incurred || 0)}</td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">
+        {isEditing ? (
+          <input
+            type="number"
+            step="0.01"
+            value={data?.reserves || ''}
+            onChange={(e) => handleInputChange('reserves', e.target.value)}
+            className={inputClasses}
+          />
+        ) : (
+          formatCurrency(data?.reserves || 0)
+        )}
+      </td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700">
+        {isEditing ? (
+          <input
+            type="number"
+            step="0.01"
+            value={data?.paid || ''}
+            onChange={(e) => handleInputChange('paid', e.target.value)}
+            className={inputClasses}
+          />
+        ) : (
+          formatCurrency(data?.paid || 0)
+        )}
+      </td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700 bg-gray-50">
+        {/* Outstanding is calculated: reserves - paid */}
+        {formatCurrency(data?.outstanding || 0)}
+      </td>
+      <td className="py-2 px-4 text-sm text-right text-gray-700 font-medium bg-gray-50">
+        {/* Incurred is calculated: paid + outstanding (same as reserves) */}
+        {formatCurrency(data?.incurred || 0)}
+      </td>
     </tr>
   )
 }
@@ -88,6 +126,9 @@ export default function ClaimDetailPage() {
 
   const [claim, setClaim] = useState(null)
   const [financials, setFinancials] = useState([])
+  const [editedFinancials, setEditedFinancials] = useState({})
+  const [isEditingFinancials, setIsEditingFinancials] = useState(false)
+  const [savingFinancials, setSavingFinancials] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showFullDetails, setShowFullDetails] = useState(false)
@@ -157,9 +198,118 @@ export default function ClaimDetailPage() {
     fetchUsers()
   }, [profile?.organization_id])
 
-  // Get financial data by category
+  // Get financial data by category (uses edited values when editing)
   const getFinancialByCategory = (category) => {
-    return financials.find(f => f.category === category) || { reserves: 0, paid: 0, outstanding: 0, incurred: 0 }
+    if (isEditingFinancials && editedFinancials[category]) {
+      return editedFinancials[category]
+    }
+    const found = financials.find(f => f.category === category)
+    if (found) {
+      // Calculate outstanding and incurred from reserves and paid
+      const reserves = parseFloat(found.reserves) || 0
+      const paid = parseFloat(found.paid) || 0
+      const outstanding = reserves - paid
+      const incurred = reserves // incurred = outstanding + paid = reserves
+      return { ...found, outstanding, incurred }
+    }
+    return { reserves: 0, paid: 0, outstanding: 0, incurred: 0 }
+  }
+
+  // Handle financial value change during editing
+  const handleFinancialChange = (category, field, value) => {
+    setEditedFinancials(prev => {
+      const current = prev[category] || getFinancialByCategory(category)
+      const updated = { ...current, [field]: value }
+
+      // Auto-calculate outstanding and incurred
+      const reserves = field === 'reserves' ? value : (parseFloat(updated.reserves) || 0)
+      const paid = field === 'paid' ? value : (parseFloat(updated.paid) || 0)
+      updated.outstanding = reserves - paid
+      updated.incurred = reserves // Incurred = outstanding + paid = reserves
+
+      return { ...prev, [category]: updated }
+    })
+  }
+
+  // Start editing financials
+  const startEditingFinancials = () => {
+    // Initialize edited values from current financials
+    const categories = ['Bodily Injury', 'Expense', 'Property Damage', 'Legal', 'Other', 'Recovery', 'Subrogation']
+    const initial = {}
+    categories.forEach(cat => {
+      initial[cat] = getFinancialByCategory(cat)
+    })
+    setEditedFinancials(initial)
+    setIsEditingFinancials(true)
+  }
+
+  // Cancel editing
+  const cancelEditingFinancials = () => {
+    setEditedFinancials({})
+    setIsEditingFinancials(false)
+  }
+
+  // Save financials
+  const saveFinancials = async () => {
+    setSavingFinancials(true)
+    try {
+      const categories = ['Bodily Injury', 'Expense', 'Property Damage', 'Legal', 'Other', 'Recovery', 'Subrogation']
+
+      for (const category of categories) {
+        const data = editedFinancials[category]
+        if (!data) continue
+
+        // Check if record exists
+        const existing = financials.find(f => f.category === category)
+
+        if (existing) {
+          // Update existing record
+          const { error } = await supabase
+            .from('claim_financials')
+            .update({
+              reserves: data.reserves || 0,
+              paid: data.paid || 0,
+              outstanding: data.outstanding || 0,
+              incurred: data.incurred || 0,
+            })
+            .eq('id', existing.id)
+
+          if (error) throw error
+        } else {
+          // Insert new record
+          const { error } = await supabase
+            .from('claim_financials')
+            .insert({
+              claim_id: params.id,
+              organization_id: profile.organization_id,
+              category,
+              reserves: data.reserves || 0,
+              paid: data.paid || 0,
+              outstanding: data.outstanding || 0,
+              incurred: data.incurred || 0,
+            })
+
+          if (error) throw error
+        }
+      }
+
+      // Update total_incurred on the claim itself
+      const totals = calculateTotals()
+      await supabase
+        .from('claims')
+        .update({ total_incurred: totals.incurred })
+        .eq('id', params.id)
+
+      // Refresh data
+      await fetchClaim()
+      setIsEditingFinancials(false)
+      setEditedFinancials({})
+    } catch (error) {
+      console.error('Error saving financials:', error)
+      alert('Failed to save financials: ' + error.message)
+    } finally {
+      setSavingFinancials(false)
+    }
   }
 
   // Calculate totals
@@ -463,47 +613,85 @@ export default function ClaimDetailPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-[#006B7D]">Current Financials</h2>
             <div className="flex items-center gap-4">
-              <button className="text-[#006B7D] hover:underline text-sm">Prior Valuation</button>
-              <button className="text-[#006B7D] hover:underline text-sm">Show Graph</button>
+              {isEditingFinancials ? (
+                <>
+                  <button
+                    onClick={cancelEditingFinancials}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveFinancials}
+                    disabled={savingFinancials}
+                    className="px-4 py-1.5 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {savingFinancials ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="text-[#006B7D] hover:underline text-sm">Prior Valuation</button>
+                  <button className="text-[#006B7D] hover:underline text-sm">Show Graph</button>
+                  <button
+                    onClick={startEditingFinancials}
+                    className="px-4 py-1.5 bg-gray-700 hover:bg-gray-800 text-white rounded text-sm font-medium transition-colors flex items-center gap-1.5"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {isEditingFinancials && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              Edit the <strong>Reserves</strong> and <strong>Paid</strong> columns. Outstanding and Incurred are calculated automatically.
+            </div>
+          )}
 
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="py-2 px-4 text-left text-sm font-medium text-gray-600">Categories</th>
-                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Reserves</th>
-                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Paid</th>
-                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Outstanding</th>
-                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">Incurred</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">
+                  Reserves
+                  {isEditingFinancials && <span className="text-[#006B7D] ml-1">*</span>}
+                </th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600">
+                  Paid
+                  {isEditingFinancials && <span className="text-[#006B7D] ml-1">*</span>}
+                </th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600 bg-gray-50">Outstanding</th>
+                <th className="py-2 px-4 text-right text-sm font-medium text-gray-600 bg-gray-50">Incurred</th>
               </tr>
             </thead>
             <tbody>
-              <FinancialRow category="Bodily Injury" data={getFinancialByCategory('Bodily Injury')} />
-              <FinancialRow category="Expense" data={getFinancialByCategory('Expense')} />
-              <FinancialRow category="Property Damage" data={getFinancialByCategory('Property Damage')} />
-              <FinancialRow category="Legal" data={getFinancialByCategory('Legal')} />
-              <FinancialRow category="Other" data={getFinancialByCategory('Other')} />
-              <FinancialRow category="Recovery" data={getFinancialByCategory('Recovery')} isExpandable={false} isNegative />
-              <FinancialRow category="Subrogation" data={getFinancialByCategory('Subrogation')} isExpandable={false} isNegative />
+              <FinancialRow category="Bodily Injury" data={getFinancialByCategory('Bodily Injury')} isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Expense" data={getFinancialByCategory('Expense')} isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Property Damage" data={getFinancialByCategory('Property Damage')} isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Legal" data={getFinancialByCategory('Legal')} isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Other" data={getFinancialByCategory('Other')} isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Recovery" data={getFinancialByCategory('Recovery')} isExpandable={false} isNegative isEditing={isEditingFinancials} onChange={handleFinancialChange} />
+              <FinancialRow category="Subrogation" data={getFinancialByCategory('Subrogation')} isExpandable={false} isNegative isEditing={isEditingFinancials} onChange={handleFinancialChange} />
             </tbody>
           </table>
 
-          {/* Incurred Formula and Totals */}
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
+          {/* Totals Row */}
+          <div className="mt-4 pt-4 border-t-2 border-gray-300">
+            <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Incurred Formula:</span>
-                <select className="text-sm border border-gray-300 rounded px-2 py-1 text-gray-700">
-                  <option>Net Incurred</option>
-                  <option>Gross Incurred</option>
-                </select>
+                <span className="text-sm font-semibold text-gray-700">TOTALS</span>
+                <span className="text-xs text-gray-500">(Net Incurred)</span>
               </div>
-              <div className="flex items-center gap-8 text-sm font-semibold">
-                <span className="w-24 text-right">{formatCurrency(totals.reserves)}</span>
-                <span className="w-24 text-right">{formatCurrency(totals.paid)}</span>
-                <span className="w-24 text-right">{formatCurrency(totals.outstanding)}</span>
-                <span className="w-24 text-right">{formatCurrency(totals.incurred)}</span>
+              <div className="flex items-center text-sm font-bold text-gray-900">
+                <span className="w-28 text-right px-4">{formatCurrency(totals.reserves)}</span>
+                <span className="w-28 text-right px-4">{formatCurrency(totals.paid)}</span>
+                <span className="w-28 text-right px-4 bg-gray-100 py-1 rounded">{formatCurrency(totals.outstanding)}</span>
+                <span className="w-28 text-right px-4 bg-[#006B7D]/10 py-1 rounded text-[#006B7D]">{formatCurrency(totals.incurred)}</span>
               </div>
             </div>
           </div>
