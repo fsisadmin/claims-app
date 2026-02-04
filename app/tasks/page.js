@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
@@ -9,7 +9,26 @@ import { supabase } from '@/lib/supabase'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
+// Wrapper component to handle Suspense for useSearchParams
 export default function TasksPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="max-w-6xl mx-auto px-6 py-8">
+          <div className="text-center py-16">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
+            <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+          </div>
+        </main>
+      </div>
+    }>
+      <TasksPageContent />
+    </Suspense>
+  )
+}
+
+function TasksPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
