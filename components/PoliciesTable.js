@@ -282,9 +282,12 @@ export default function PoliciesTable({ policies, clientId, locations, onAddPoli
 
                       {/* Policy Number */}
                       <td className="px-3 py-3">
-                        <span className="font-medium text-[#006B7D]">
+                        <Link
+                          href={`/policies/${policy.id}`}
+                          className="font-medium text-[#006B7D] hover:underline"
+                        >
                           {policy.policy_number}
-                        </span>
+                        </Link>
                       </td>
 
                       {/* Type */}
