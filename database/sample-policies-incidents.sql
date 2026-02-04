@@ -7,7 +7,7 @@ DECLARE
     org_id UUID;
     client_rec RECORD;
     loc_rec RECORD;
-    policy_id UUID;
+    new_policy_id UUID;
     policy_counter INT := 0;
     incident_counter INT := 0;
 BEGIN
@@ -43,11 +43,11 @@ BEGIN
             35000.00, 5000.00, 1000000.00, 2000000.00,
             'active',
             'Commercial General Liability coverage for all operations.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         -- Link GL policy to first 3 locations for this client
         INSERT INTO policy_locations (policy_id, location_id, organization_id, location_tiv, location_premium)
-        SELECT policy_id, l.id, org_id, l.total_tiv, 35000.00 / 3
+        SELECT new_policy_id, l.id, org_id, l.total_tiv, 35000.00 / 3
         FROM locations l
         WHERE l.client_id = client_rec.id
         ORDER BY l.created_at
@@ -72,11 +72,11 @@ BEGIN
             75000.00, 25000.00, 5000000.00, 10000000.00, 50000000.00,
             'active',
             'All-risk property coverage including buildings and contents.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         -- Link Property policy to all locations for this client
         INSERT INTO policy_locations (policy_id, location_id, organization_id, location_tiv, location_premium)
-        SELECT policy_id, l.id, org_id, l.total_tiv, 75000.00 / COUNT(*) OVER ()
+        SELECT new_policy_id, l.id, org_id, l.total_tiv, 75000.00 / COUNT(*) OVER ()
         FROM locations l
         WHERE l.client_id = client_rec.id;
 
@@ -99,7 +99,7 @@ BEGIN
             18000.00, 10000.00, 5000000.00, 5000000.00,
             'active',
             'Umbrella liability coverage excess of primary GL.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         policy_counter := policy_counter + 1;
 
@@ -120,7 +120,7 @@ BEGIN
             42000.00, 0.00, 1000000.00,
             'active',
             'Statutory workers compensation coverage.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         policy_counter := policy_counter + 1;
 
@@ -141,7 +141,7 @@ BEGIN
             28000.00, 1000.00, 1000000.00, 2000000.00,
             'active',
             'Commercial auto fleet coverage. RENEWAL NEEDED.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         policy_counter := policy_counter + 1;
 
@@ -162,7 +162,7 @@ BEGIN
             68000.00, 25000.00, 5000000.00, 10000000.00,
             'expired',
             'Previous year property policy - renewed.'
-        ) RETURNING id INTO policy_id;
+        ) RETURNING id INTO new_policy_id;
 
         policy_counter := policy_counter + 1;
 
