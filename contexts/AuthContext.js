@@ -10,14 +10,24 @@ const AuthContext = createContext({})
 let profileCache = null
 let profileCacheUserId = null
 
-// Timeout helper
-function withTimeout(promise, ms = 10000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Request timeout')), ms)
-    )
-  ])
+// Timeout helper with retry
+async function withTimeoutAndRetry(fn, ms = 30000, retries = 2) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await Promise.race([
+        fn(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timeout')), ms)
+        )
+      ])
+      return result
+    } catch (error) {
+      console.log(`[Auth] Attempt ${attempt}/${retries} failed:`, error.message)
+      if (attempt === retries) throw error
+      // Wait 1 second before retry
+      await new Promise(r => setTimeout(r, 1000))
+    }
+  }
 }
 
 export const useAuth = () => {
@@ -37,10 +47,10 @@ export function AuthProvider({ children }) {
   const loadingRef = useRef(false)
 
   useEffect(() => {
-    // Check active session with timeout
+    // Check active session with timeout and retry
     const startTime = Date.now()
     console.log('[Auth] Starting getSession...')
-    withTimeout(supabase.auth.getSession(), 15000)
+    withTimeoutAndRetry(() => supabase.auth.getSession(), 30000, 3)
       .then(({ data: { session } }) => {
         console.log(`[Auth] getSession completed in ${Date.now() - startTime}ms`)
         setUser(session?.user ?? null)
@@ -105,13 +115,14 @@ export function AuthProvider({ children }) {
     const startTime = Date.now()
     console.log('[Auth] Starting profile load...')
     try {
-      const { data, error } = await withTimeout(
-        supabase
+      const { data, error } = await withTimeoutAndRetry(
+        () => supabase
           .from('user_profiles')
           .select('id, full_name, email, role, organization_id, organizations(id, name)')
           .eq('id', userId)
           .single(),
-        15000
+        30000,
+        3
       )
       console.log(`[Auth] Profile loaded in ${Date.now() - startTime}ms`)
 
@@ -138,7 +149,7 @@ export function AuthProvider({ children }) {
   function retryConnection() {
     setLoading(true)
     setConnectionError(false)
-    withTimeout(supabase.auth.getSession(), 15000)
+    withTimeoutAndRetry(() => supabase.auth.getSession(), 30000, 3)
       .then(({ data: { session } }) => {
         setUser(session?.user ?? null)
         if (session?.user) {
