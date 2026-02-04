@@ -10,6 +10,16 @@ const AuthContext = createContext({})
 let profileCache = null
 let profileCacheUserId = null
 
+// Timeout helper
+function withTimeout(promise, ms = 10000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), ms)
+    )
+  ])
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {
@@ -22,25 +32,33 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(profileCache)
   const [loading, setLoading] = useState(true)
+  const [connectionError, setConnectionError] = useState(false)
   const router = useRouter()
   const loadingRef = useRef(false)
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        // Use cached profile if available for this user
-        if (profileCache && profileCacheUserId === session.user.id) {
-          setProfile(profileCache)
-          setLoading(false)
+    // Check active session with timeout
+    withTimeout(supabase.auth.getSession(), 15000)
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null)
+        setConnectionError(false)
+        if (session?.user) {
+          // Use cached profile if available for this user
+          if (profileCache && profileCacheUserId === session.user.id) {
+            setProfile(profileCache)
+            setLoading(false)
+          } else {
+            loadUserProfile(session.user.id)
+          }
         } else {
-          loadUserProfile(session.user.id)
+          setLoading(false)
         }
-      } else {
+      })
+      .catch((error) => {
+        console.error('Auth session error:', error)
+        setConnectionError(true)
         setLoading(false)
-      }
-    })
+      })
 
     // Listen for auth changes
     const {
@@ -81,11 +99,14 @@ export function AuthProvider({ children }) {
     loadingRef.current = true
 
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, email, role, organization_id, organizations(id, name)')
-        .eq('id', userId)
-        .single()
+      const { data, error } = await withTimeout(
+        supabase
+          .from('user_profiles')
+          .select('id, full_name, email, role, organization_id, organizations(id, name)')
+          .eq('id', userId)
+          .single(),
+        15000
+      )
 
       if (error) throw error
 
@@ -93,13 +114,37 @@ export function AuthProvider({ children }) {
       profileCache = data
       profileCacheUserId = userId
       setProfile(data)
+      setConnectionError(false)
     } catch (error) {
       console.error('Error loading profile:', error)
       setProfile(null)
+      if (error.message === 'Request timeout') {
+        setConnectionError(true)
+      }
     } finally {
       setLoading(false)
       loadingRef.current = false
     }
+  }
+
+  // Retry connection
+  function retryConnection() {
+    setLoading(true)
+    setConnectionError(false)
+    withTimeout(supabase.auth.getSession(), 15000)
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadUserProfile(session.user.id)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch((error) => {
+        console.error('Retry failed:', error)
+        setConnectionError(true)
+        setLoading(false)
+      })
   }
 
   // Memoize context value to prevent unnecessary re-renders of consumers
@@ -107,9 +152,11 @@ export function AuthProvider({ children }) {
     user,
     profile,
     loading,
+    connectionError,
+    retryConnection,
     isAdmin: profile?.role === 'admin',
     isManager: profile?.role === 'manager' || profile?.role === 'admin',
-  }), [user, profile, loading])
+  }), [user, profile, loading, connectionError])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
