@@ -47,9 +47,44 @@ export function AuthProvider({ children }) {
   const loadingRef = useRef(false)
 
   useEffect(() => {
-    // Check active session with timeout and retry
+    // Try to get cached session from localStorage first (faster)
     const startTime = Date.now()
-    console.log('[Auth] Starting getSession...')
+    console.log('[Auth] Checking for cached session...')
+
+    // First, try local storage directly for instant load
+    const cachedSession = typeof window !== 'undefined'
+      ? localStorage.getItem('risky-business-auth')
+      : null
+
+    if (cachedSession) {
+      try {
+        const parsed = JSON.parse(cachedSession)
+        const session = parsed?.currentSession || parsed
+        if (session?.user && session?.access_token) {
+          const expiresAt = session.expires_at || 0
+          const isExpired = expiresAt * 1000 < Date.now()
+
+          if (!isExpired) {
+            console.log(`[Auth] Using cached session (expires in ${Math.round((expiresAt * 1000 - Date.now()) / 60000)}min)`)
+            setUser(session.user)
+            // Still load profile if needed
+            if (profileCache && profileCacheUserId === session.user.id) {
+              setProfile(profileCache)
+              setLoading(false)
+              return // Skip network call entirely
+            } else {
+              loadUserProfile(session.user.id)
+              return
+            }
+          }
+        }
+      } catch (e) {
+        console.log('[Auth] Could not parse cached session')
+      }
+    }
+
+    // Fallback: make network call to get/refresh session
+    console.log('[Auth] Starting getSession network call...')
     withTimeoutAndRetry(() => supabase.auth.getSession(), 30000, 3)
       .then(({ data: { session } }) => {
         console.log(`[Auth] getSession completed in ${Date.now() - startTime}ms`)
