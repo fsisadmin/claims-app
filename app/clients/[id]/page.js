@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import LocationsTable from '@/components/LocationsTable'
+import PoliciesTable from '@/components/PoliciesTable'
 import ClaimsTable from '@/components/ClaimsTable'
 import IncidentsTable from '@/components/IncidentsTable'
 import CommentSidebar from '@/components/CommentSidebar'
@@ -57,13 +58,17 @@ export default function ClientDetailPage() {
   const [incidentsCount, setIncidentsCount] = useState(0)
   const [incidentsLoading, setIncidentsLoading] = useState(false)
   const [incidentsFetched, setIncidentsFetched] = useState(false)
+  const [policies, setPolicies] = useState([])
+  const [policiesCount, setPoliciesCount] = useState(0)
+  const [policiesLoading, setPoliciesLoading] = useState(false)
+  const [policiesFetched, setPoliciesFetched] = useState(false)
   const [activeTab, setActiveTab] = useState('locations')
   const [users, setUsers] = useState([])
 
   // Check URL for tab param
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab && ['locations', 'claims', 'incidents'].includes(tab)) {
+    if (tab && ['locations', 'policies', 'claims', 'incidents'].includes(tab)) {
       setActiveTab(tab)
     }
   }, [searchParams])
@@ -84,8 +89,13 @@ export default function ClientDetailPage() {
     if (!profile?.organization_id || !params.id) return
 
     try {
-      // Run both count queries in parallel for speed
-      const [claimsResult, incidentsResult] = await Promise.all([
+      // Run all count queries in parallel for speed
+      const [policiesResult, claimsResult, incidentsResult] = await Promise.all([
+        supabase
+          .from('policies')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', profile.organization_id)
+          .eq('client_id', params.id),
         supabase
           .from('claims')
           .select('id', { count: 'exact', head: true })
@@ -98,6 +108,7 @@ export default function ClientDetailPage() {
           .eq('client_id', params.id)
       ])
 
+      if (!policiesResult.error) setPoliciesCount(policiesResult.count || 0)
       if (!claimsResult.error) setClaimsCount(claimsResult.count || 0)
       if (!incidentsResult.error) setIncidentsCount(incidentsResult.count || 0)
     } catch (error) {
@@ -156,6 +167,39 @@ export default function ClientDetailPage() {
     }
   }, [profile?.organization_id, params.id, incidentsFetched])
 
+  // Fetch full policies data with linked locations (only when policies tab is clicked)
+  const fetchPolicies = useCallback(async () => {
+    if (!profile?.organization_id || !params.id || policiesFetched) return
+
+    setPoliciesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('policies')
+        .select(`
+          *,
+          policy_locations(
+            id,
+            location_id,
+            location_tiv,
+            location_premium,
+            location:locations(id, location_name, city, state, street_address)
+          )
+        `)
+        .eq('organization_id', profile.organization_id)
+        .eq('client_id', params.id)
+        .order('expiration_date', { ascending: true })
+        .limit(100)
+
+      if (error) throw error
+      setPolicies(data || [])
+      setPoliciesFetched(true)
+    } catch (error) {
+      console.error('Error fetching policies:', error)
+    } finally {
+      setPoliciesLoading(false)
+    }
+  }, [profile?.organization_id, params.id, policiesFetched])
+
   // Fetch counts on initial load (fast)
   useEffect(() => {
     if (user && profile) {
@@ -178,13 +222,16 @@ export default function ClientDetailPage() {
 
   // Fetch full data only when tab is clicked
   useEffect(() => {
+    if (activeTab === 'policies' && user && profile && !policiesFetched) {
+      fetchPolicies()
+    }
     if (activeTab === 'claims' && user && profile && !claimsFetched) {
       fetchClaims()
     }
     if (activeTab === 'incidents' && user && profile && !incidentsFetched) {
       fetchIncidents()
     }
-  }, [activeTab, user, profile, claimsFetched, incidentsFetched, fetchClaims, fetchIncidents])
+  }, [activeTab, user, profile, policiesFetched, claimsFetched, incidentsFetched, fetchPolicies, fetchClaims, fetchIncidents])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -405,6 +452,24 @@ export default function ClientDetailPage() {
                 </div>
               </button>
               <button
+                onClick={() => setActiveTab('policies')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'policies'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Policies
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {policiesFetched ? policies.length : policiesCount}
+                  </span>
+                </div>
+              </button>
+              <button
                 onClick={() => setActiveTab('claims')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
                   activeTab === 'claims'
@@ -458,6 +523,24 @@ export default function ClientDetailPage() {
                     clientId={params.id}
                     organizationId={profile.organization_id}
                     onRefresh={refreshLocations}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'policies' && (
+              <>
+                {policiesLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading policies...</p>
+                  </div>
+                ) : (
+                  <PoliciesTable
+                    policies={policies}
+                    clientId={params.id}
+                    locations={locations}
+                    onAddPolicy={() => router.push(`/clients/${params.id}/policies/add`)}
                   />
                 )}
               </>

@@ -178,7 +178,7 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-1.5 mb-1">
                   <span className="font-medium text-xs text-gray-900 line-clamp-2 leading-tight">{task.title}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${getPriorityColor(task.priority)}`}>
-                    {task.priority}
+                    {task.priority?.charAt(0).toUpperCase() + task.priority?.slice(1)}
                   </span>
                 </div>
                 <div className="text-xs text-[#006B7D] font-medium truncate">
