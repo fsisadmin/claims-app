@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -257,9 +257,8 @@ export default function PoliciesTable({ policies, clientId, locations, onAddPoli
                 const isExpanded = expandedPolicies.has(policy.id)
 
                 return (
-                  <>
+                  <Fragment key={policy.id}>
                     <tr
-                      key={policy.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
                       {/* Expand button */}
@@ -373,7 +372,7 @@ export default function PoliciesTable({ policies, clientId, locations, onAddPoli
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>
