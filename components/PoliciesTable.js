@@ -359,11 +359,28 @@ export default function PoliciesTable({ policies, clientId, locations, onAddPoli
                                       </p>
                                     </div>
                                   </div>
-                                  {pl.location_tiv && (
-                                    <div className="text-right">
-                                      <p className="text-xs text-gray-500">TIV</p>
-                                      <p className="font-medium text-sm text-gray-900">{formatCurrency(pl.location_tiv)}</p>
+                                  {policy.policy_type === 'General Liability' ? (
+                                    <div className="flex items-center gap-6 text-right">
+                                      {pl.location?.num_units && (
+                                        <div>
+                                          <p className="text-xs text-gray-500">Units</p>
+                                          <p className="font-medium text-sm text-gray-900">{pl.location.num_units.toLocaleString()}</p>
+                                        </div>
+                                      )}
+                                      {pl.location?.square_footage && (
+                                        <div>
+                                          <p className="text-xs text-gray-500">Sq Ft</p>
+                                          <p className="font-medium text-sm text-gray-900">{pl.location.square_footage.toLocaleString()}</p>
+                                        </div>
+                                      )}
                                     </div>
+                                  ) : (
+                                    pl.location_tiv && (
+                                      <div className="text-right">
+                                        <p className="text-xs text-gray-500">TIV</p>
+                                        <p className="font-medium text-sm text-gray-900">{formatCurrency(pl.location_tiv)}</p>
+                                      </div>
+                                    )
                                   )}
                                 </Link>
                               ))}

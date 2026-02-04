@@ -182,7 +182,7 @@ export default function ClientDetailPage() {
             location_id,
             location_tiv,
             location_premium,
-            location:locations(id, location_name, city, state, street_address)
+            location:locations(id, location_name, city, state, street_address, num_units, square_footage)
           )
         `)
         .eq('organization_id', profile.organization_id)
