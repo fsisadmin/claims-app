@@ -180,12 +180,15 @@ async function fetchClients({ organizationId }) {
     return []
   }
 
+  const startTime = Date.now()
+  console.log('[Clients] Starting fetch...')
   const { data, error } = await supabase
     .from('clients')
     .select(CLIENTS_LIST_COLUMNS)
     .eq('organization_id', organizationId)
     .order('name', { ascending: true })
     .limit(500) // Safety limit
+  console.log(`[Clients] Fetch completed in ${Date.now() - startTime}ms, got ${data?.length || 0} clients`)
 
   if (error) throw error
   return data || []

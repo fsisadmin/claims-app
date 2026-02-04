@@ -38,13 +38,17 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Check active session with timeout
+    const startTime = Date.now()
+    console.log('[Auth] Starting getSession...')
     withTimeout(supabase.auth.getSession(), 15000)
       .then(({ data: { session } }) => {
+        console.log(`[Auth] getSession completed in ${Date.now() - startTime}ms`)
         setUser(session?.user ?? null)
         setConnectionError(false)
         if (session?.user) {
           // Use cached profile if available for this user
           if (profileCache && profileCacheUserId === session.user.id) {
+            console.log('[Auth] Using cached profile')
             setProfile(profileCache)
             setLoading(false)
           } else {
@@ -55,7 +59,7 @@ export function AuthProvider({ children }) {
         }
       })
       .catch((error) => {
-        console.error('Auth session error:', error)
+        console.error(`[Auth] getSession failed after ${Date.now() - startTime}ms:`, error)
         setConnectionError(true)
         setLoading(false)
       })
@@ -98,6 +102,8 @@ export function AuthProvider({ children }) {
     if (loadingRef.current) return
     loadingRef.current = true
 
+    const startTime = Date.now()
+    console.log('[Auth] Starting profile load...')
     try {
       const { data, error } = await withTimeout(
         supabase
@@ -107,6 +113,7 @@ export function AuthProvider({ children }) {
           .single(),
         15000
       )
+      console.log(`[Auth] Profile loaded in ${Date.now() - startTime}ms`)
 
       if (error) throw error
 
@@ -116,7 +123,7 @@ export function AuthProvider({ children }) {
       setProfile(data)
       setConnectionError(false)
     } catch (error) {
-      console.error('Error loading profile:', error)
+      console.error(`[Auth] Profile load failed after ${Date.now() - startTime}ms:`, error)
       setProfile(null)
       if (error.message === 'Request timeout') {
         setConnectionError(true)
