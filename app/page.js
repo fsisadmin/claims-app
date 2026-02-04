@@ -115,10 +115,10 @@ export default function Home() {
 
       {/* Tasks Panel - Fixed right sidebar */}
       {showTasksPanel && myTasks.length > 0 && (
-        <div className="fixed right-0 top-[180px] w-80 h-[calc(100vh-180px)] bg-white border-l border-gray-200 shadow-lg z-40 overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="fixed right-4 top-[180px] bottom-6 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-40 overflow-hidden flex flex-col">
+          <div className="px-3 py-2.5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
+            <h3 className="font-semibold text-white text-sm flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
               My Tasks ({myTasks.length})
@@ -127,36 +127,30 @@ export default function Home() {
               onClick={() => setShowTasksPanel(false)}
               className="text-white/80 hover:text-white transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {myTasks.slice(0, 10).map((task) => (
               <div
                 key={task.id}
                 onClick={() => router.push(`/tasks?task=${task.id}`)}
-                className="p-4 bg-white hover:bg-gray-50 rounded-xl cursor-pointer transition-all shadow-sm hover:shadow-md border border-gray-100"
+                className="p-2.5 bg-white hover:bg-gray-50 rounded-lg cursor-pointer transition-all shadow-sm hover:shadow border border-gray-100"
               >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="font-semibold text-sm text-gray-900 line-clamp-2">{task.title}</span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${getPriorityColor(task.priority)}`}>
+                <div className="flex items-start justify-between gap-1.5 mb-1">
+                  <span className="font-medium text-xs text-gray-900 line-clamp-2 leading-tight">{task.title}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${getPriorityColor(task.priority)}`}>
                     {task.priority}
                   </span>
                 </div>
-                <div className="text-sm text-[#006B7D] font-medium mb-1">{task.client_name}</div>
-                {task.linked_entity_type && task.linked_entity_name && (
-                  <div className="text-xs text-gray-600 flex items-center gap-1.5 mb-2 bg-gray-100 px-2 py-1 rounded-md w-fit">
-                    <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="truncate">{task.linked_entity_name}</span>
-                  </div>
-                )}
-                <div className={`text-xs flex items-center gap-1 ${isOverdue(task.due_date, task.status) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="text-xs text-[#006B7D] font-medium truncate">
+                  {task.client_name}
+                  {task.linked_entity_name && <span className="text-gray-400 font-normal"> · {task.linked_entity_name}</span>}
+                </div>
+                <div className={`text-[10px] flex items-center gap-1 mt-1 ${isOverdue(task.due_date, task.status) ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   {task.due_date ? (
@@ -173,16 +167,16 @@ export default function Home() {
             {myTasks.length > 10 && (
               <button
                 onClick={() => router.push('/tasks')}
-                className="w-full text-center text-sm text-[#006B7D] hover:text-[#008BA3] font-medium py-2"
+                className="w-full text-center text-xs text-[#006B7D] hover:text-[#008BA3] font-medium py-1.5"
               >
                 View all {myTasks.length} tasks →
               </button>
             )}
           </div>
-          <div className="p-3 border-t border-gray-200">
+          <div className="p-2 border-t border-gray-200">
             <button
               onClick={() => router.push('/tasks')}
-              className="w-full px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white text-sm font-medium rounded-lg transition-colors"
+              className="w-full px-3 py-1.5 bg-[#006B7D] hover:bg-[#008BA3] text-white text-xs font-medium rounded-lg transition-colors"
             >
               Go to Tasks
             </button>
@@ -194,7 +188,7 @@ export default function Home() {
       {!showTasksPanel && myTasks.length > 0 && (
         <button
           onClick={() => setShowTasksPanel(true)}
-          className="fixed right-4 top-[190px] z-40 bg-[#006B7D] hover:bg-[#008BA3] text-white p-3 rounded-full shadow-lg transition-all hover:scale-105"
+          className="fixed right-4 top-[180px] z-40 bg-[#006B7D] hover:bg-[#008BA3] text-white p-2.5 rounded-lg shadow-lg transition-all hover:scale-105"
           title="Show tasks"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,7 +202,7 @@ export default function Home() {
         </button>
       )}
 
-      <main className={`max-w-7xl mx-auto px-6 py-8 ${showTasksPanel && myTasks.length > 0 ? 'mr-80' : ''}`}>
+      <main className={`max-w-7xl mx-auto px-6 py-8 transition-all duration-300 ${showTasksPanel && myTasks.length > 0 ? 'mr-60' : ''}`}>
         {/* Loading State */}
         {(authLoading || !profile || clientsLoading) && (
           <div className="text-center py-16">
@@ -231,14 +225,14 @@ export default function Home() {
           <>
             {/* Recently Viewed Section */}
             {!searchQuery && recentClients.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Recently Viewed
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                   {recentClients.map(client => (
                     <ClientCard key={client.id} client={client} />
                   ))}

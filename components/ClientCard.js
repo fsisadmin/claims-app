@@ -26,42 +26,26 @@ function getColorFromName(name) {
 const ClientCard = memo(function ClientCard({ client }) {
   return (
     <Link href={`/clients/${client.id}`}>
-      <div className="group bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-lg transition-all duration-200 cursor-pointer hover:border-[#006B7D]/30 h-60 flex flex-col">
+      <div className="group bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 cursor-pointer hover:border-[#006B7D]/30 h-64 flex flex-col">
         {/* Logo */}
-        <div className="flex justify-center mb-3">
+        <div className="flex justify-center mb-3 flex-1 items-center">
           {client.logo_url ? (
             <img
               src={client.logo_url}
               alt={`${client.name} logo`}
-              className="w-24 h-24 rounded-xl object-contain"
+              className="w-32 h-32 rounded-xl object-contain"
             />
           ) : (
-            <div className={`w-24 h-24 rounded-xl ${getColorFromName(client.name)} flex items-center justify-center text-white font-bold text-2xl`}>
+            <div className={`w-32 h-32 rounded-xl ${getColorFromName(client.name)} flex items-center justify-center text-white font-bold text-4xl`}>
               {getInitials(client.name)}
             </div>
           )}
         </div>
 
         {/* Client Name */}
-        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-[#006B7D] transition-colors text-center line-clamp-1 mb-2">
+        <h3 className="text-base font-semibold text-gray-900 group-hover:text-[#006B7D] transition-colors text-center line-clamp-2 leading-tight">
           {client.name}
         </h3>
-
-        {/* Producer & Account Manager */}
-        <div className="space-y-1 text-xs flex-1">
-          {client.producer_name && (
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500">Producer:</span>
-              <span className="text-gray-900 truncate">{client.producer_name}</span>
-            </div>
-          )}
-          {client.account_manager && (
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500">AM:</span>
-              <span className="text-gray-900 truncate">{client.account_manager}</span>
-            </div>
-          )}
-        </div>
       </div>
     </Link>
   )

@@ -217,7 +217,7 @@ export function useClients(organizationId) {
 // ============================================================
 
 const RECENT_CLIENTS_KEY = 'recentlyViewedClients'
-const MAX_RECENT_CLIENTS = 3
+const MAX_RECENT_CLIENTS = 5
 
 // Get recently viewed client IDs from localStorage
 export function getRecentClientIds() {
