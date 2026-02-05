@@ -19,6 +19,8 @@ export default function LocationDetailPage() {
   const [activeTab, setActiveTab] = useState('lenders')
   const [claims, setClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
+  const [linkedPolicies, setLinkedPolicies] = useState([])
+  const [policiesLoading, setPoliciesLoading] = useState(false)
   const [users, setUsers] = useState([])
   const sovScrollRef = useRef(null)
   const [focusedSovCell, setFocusedSovCell] = useState(null) // Which cell is focused (for navigation)
@@ -61,6 +63,43 @@ export default function LocationDetailPage() {
     }
 
     fetchClaims()
+  }, [params.locationId, profile?.organization_id])
+
+  // Fetch policies linked to this location via policy_locations junction table
+  useEffect(() => {
+    async function fetchLinkedPolicies() {
+      if (!params.locationId || !profile?.organization_id) return
+
+      setPoliciesLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('policy_locations')
+          .select(`
+            id,
+            location_tiv,
+            location_premium,
+            policy:policies(
+              id, policy_number, policy_type, carrier,
+              effective_date, expiration_date, status, premium,
+              client_id
+            )
+          `)
+          .eq('location_id', params.locationId)
+
+        if (error) throw error
+        // Filter out any null policies and sort by effective date
+        const policies = (data || [])
+          .filter(pl => pl.policy)
+          .sort((a, b) => new Date(b.policy.effective_date) - new Date(a.policy.effective_date))
+        setLinkedPolicies(policies)
+      } catch (error) {
+        console.error('Error fetching linked policies:', error)
+      } finally {
+        setPoliciesLoading(false)
+      }
+    }
+
+    fetchLinkedPolicies()
   }, [params.locationId, profile?.organization_id])
 
   // Fetch users for task assignment dropdown
@@ -1022,55 +1061,82 @@ export default function LocationDetailPage() {
               {activeTab === 'policies' && (
                 <div>
                   <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Policy Information</h3>
-                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
-                      Add Policy
-                    </button>
+                    <h3 className="text-lg font-semibold text-gray-900">Linked Policies ({linkedPolicies.length})</h3>
                   </div>
 
-                  {/* Policy Details */}
-                  <div className="space-y-4 mb-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Policy</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.policy || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Policy ID</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.policy_id || '-'}
-                        </div>
-                      </div>
+                  {/* Linked Policies List */}
+                  {policiesLoading ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                      <p className="mt-2 text-gray-600">Loading policies...</p>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Policies (All)</label>
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                        {location.policies || '-'}
-                      </div>
+                  ) : linkedPolicies.length > 0 ? (
+                    <div className="overflow-x-auto mb-6">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Policy #</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Carrier</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Effective</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Expiration</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location TIV</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {linkedPolicies.map(pl => (
+                            <tr
+                              key={pl.id}
+                              onClick={() => router.push(`/policies/${pl.policy.id}`)}
+                              className="hover:bg-gray-50 cursor-pointer"
+                            >
+                              <td className="px-4 py-3 text-sm font-medium text-[#006B7D]">
+                                {pl.policy.policy_number || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {pl.policy.policy_type || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {pl.policy.carrier || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {pl.policy.effective_date ? new Date(pl.policy.effective_date).toLocaleDateString() : '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {pl.policy.expiration_date ? new Date(pl.policy.expiration_date).toLocaleDateString() : '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  pl.policy.status === 'active'
+                                    ? 'bg-green-100 text-green-800'
+                                    : pl.policy.status === 'expired'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {pl.policy.status ? pl.policy.status.charAt(0).toUpperCase() + pl.policy.status.slice(1) : '-'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {pl.location_tiv ? `$${Number(pl.location_tiv).toLocaleString()}` : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">25-26 Policies</label>
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                        {location.policies_25_26 || '-'}
-                      </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg mb-6">
+                      <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      <p className="text-sm">No policies linked to this location.</p>
                     </div>
-                  </div>
-
-                  {/* Coverage */}
-                  <div className="border-t border-gray-200 pt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">Coverage Details</h4>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                        {location.coverage || 'No coverage details available'}
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Deductibles */}
-                  <div className="border-t border-gray-200 pt-6 mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">Deductibles</h4>
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">Location Deductibles</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Deductible</label>
@@ -1097,23 +1163,6 @@ export default function LocationDetailPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Documents */}
-                  <div className="border-t border-gray-200 pt-6 mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">Documents</h4>
-                    {location.documents_for_location ? (
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                        {location.documents_for_location}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-sm">No documents found for this location.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

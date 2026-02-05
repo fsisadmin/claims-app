@@ -68,7 +68,7 @@ export default function ClientDetailPage() {
   // Check URL for tab param
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab && ['locations', 'policies', 'claims', 'incidents'].includes(tab)) {
+    if (tab && ['locations', 'sold-locations', 'policies', 'claims', 'incidents'].includes(tab)) {
       setActiveTab(tab)
     }
   }, [searchParams])
@@ -76,6 +76,10 @@ export default function ClientDetailPage() {
   // Use SWR hooks for cached data fetching
   const { client, isLoading: clientLoading, isError: clientError } = useClient(params.id, profile?.organization_id)
   const { locations, isLoading: locationsLoading, refresh: refreshLocations } = useLocations(params.id, profile?.organization_id)
+
+  // Filter locations by status - sold locations go to their own tab
+  const activeLocations = locations.filter(loc => loc.status?.toLowerCase() !== 'sold')
+  const soldLocations = locations.filter(loc => loc.status?.toLowerCase() === 'sold')
 
   // Track this client as recently viewed
   useEffect(() => {
@@ -447,7 +451,25 @@ export default function ClientDetailPage() {
                   </svg>
                   Locations
                   <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {locations.length}
+                    {activeLocations.length}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('sold-locations')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'sold-locations'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  Sold Locations
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {soldLocations.length}
                   </span>
                 </div>
               </button>
@@ -519,7 +541,25 @@ export default function ClientDetailPage() {
                   </div>
                 ) : (
                   <LocationsTable
-                    locations={locations}
+                    locations={activeLocations}
+                    clientId={params.id}
+                    organizationId={profile.organization_id}
+                    onRefresh={refreshLocations}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'sold-locations' && (
+              <>
+                {locationsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading sold locations...</p>
+                  </div>
+                ) : (
+                  <LocationsTable
+                    locations={soldLocations}
                     clientId={params.id}
                     organizationId={profile.organization_id}
                     onRefresh={refreshLocations}

@@ -4,6 +4,10 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { EditableCell, parseInputValue, PasteModal, TableToolbar, PaginationControls } from './locations'
+import { STATES } from '@/lib/states'
+
+// Generate state options for dropdown
+const STATE_OPTIONS = STATES.map(s => ({ value: s.code, label: `${s.code} - ${s.name}` }))
 
 // Column definitions with labels and field names
 const COLUMNS = [
@@ -12,7 +16,7 @@ const COLUMNS = [
   { key: 'company', label: 'Company', width: 150, type: 'text' },
   { key: 'street_address', label: 'Street Address', width: 200, type: 'text' },
   { key: 'city', label: 'City', width: 120, type: 'text' },
-  { key: 'state', label: 'State', width: 80, type: 'text' },
+  { key: 'state', label: 'State', width: 100, type: 'select', options: STATE_OPTIONS },
   { key: 'zip', label: 'Zip', width: 80, type: 'text' },
   { key: 'county', label: 'County', width: 120, type: 'text' },
   { key: 'full_address', label: 'Full Address', width: 250, type: 'text' },
@@ -114,7 +118,12 @@ const COLUMNS = [
   { key: 'total_incurred_five_years_gl', label: 'Total Incurred 5Yr GL', width: 160, type: 'currency', format: 'currency' },
 
   // Status & Dates
-  { key: 'status', label: 'Status', width: 100, type: 'text' },
+  { key: 'status', label: 'Status', width: 100, type: 'select', options: [
+    { value: 'Active', label: 'Active' },
+    { value: 'Sold', label: 'Sold' },
+    { value: 'Pending', label: 'Pending' },
+    { value: 'Under Contract', label: 'Under Contract' },
+  ]},
   { key: 'date_sold', label: 'Date Sold', width: 100, type: 'date' },
   { key: 'projected_close_date', label: 'Projected Close Date', width: 150, type: 'date' },
 

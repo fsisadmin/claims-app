@@ -12,6 +12,7 @@ const LOCATIONS_LIST_COLUMNS = `
   construction_description, orig_year_built,
   real_property_value, personal_property_value, total_tiv,
   tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
+  status, date_sold,
   client_id, organization_id, created_at
 `
 
