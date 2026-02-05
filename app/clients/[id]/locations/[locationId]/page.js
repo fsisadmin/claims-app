@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
@@ -14,13 +14,15 @@ export default function LocationDetailPage() {
   const params = useParams()
   const { user, profile, loading: authLoading } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
-  const [isSovEditing, setIsSovEditing] = useState(false)
   const [editData, setEditData] = useState({})
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('lenders')
   const [claims, setClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [users, setUsers] = useState([])
+  const sovScrollRef = useRef(null)
+  const [focusedSovCell, setFocusedSovCell] = useState(null) // Which cell is focused (for navigation)
+  const [editingSovCell, setEditingSovCell] = useState(null) // Which cell is being edited
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -80,6 +82,38 @@ export default function LocationDetailPage() {
     }
   }, [user, authLoading, router])
 
+  // Auto-scroll to keep focused SOV cell visible
+  useEffect(() => {
+    if (focusedSovCell === null) return
+
+    const cellElement = document.querySelector(`[data-sov-cell="${focusedSovCell}"]`)
+    if (cellElement && sovScrollRef.current) {
+      const container = sovScrollRef.current
+      const cellRect = cellElement.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+
+      // Horizontal scroll
+      if (cellRect.left < containerRect.left) {
+        const scrollAmount = cellRect.left - containerRect.left - 10
+        container.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+      } else if (cellRect.right > containerRect.right) {
+        const scrollAmount = cellRect.right - containerRect.right + 10
+        container.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+      }
+    }
+  }, [focusedSovCell])
+
+  // Focus the input when entering edit mode
+  useEffect(() => {
+    if (editingSovCell !== null) {
+      const input = document.querySelector(`[data-sov-input="${editingSovCell}"]`)
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    }
+  }, [editingSovCell])
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -94,7 +128,6 @@ export default function LocationDetailPage() {
       // Update the SWR cache with new data
       mutateLocation(editData, false)
       setIsEditing(false)
-      setIsSovEditing(false)
     } catch (error) {
       console.error('Error saving location:', error)
       alert('Failed to save changes')
@@ -150,10 +183,9 @@ export default function LocationDetailPage() {
     )
   }
 
-  // SOV Single Line columns
+  // SOV Single Line columns - location_name is frozen, rest are scrollable
   const sovColumns = [
     { key: 'entity_name', label: 'Entity Name', width: 150 },
-    { key: 'location_name', label: 'Location Name', width: 150 },
     { key: 'street_address', label: 'Street Address', width: 180 },
     { key: 'city', label: 'City', width: 120 },
     { key: 'state', label: 'State', width: 80 },
@@ -168,6 +200,106 @@ export default function LocationDetailPage() {
     { key: 'personal_property_value', label: 'Personal Property $', width: 140 },
     { key: 'total_tiv', label: 'Total TIV', width: 120 },
   ]
+
+  // Handle SOV cell click - focus the cell
+  const handleSovCellClick = (colIndex) => {
+    setFocusedSovCell(colIndex)
+  }
+
+  // Handle SOV cell double click - enter edit mode
+  const handleSovCellDoubleClick = (colIndex) => {
+    setFocusedSovCell(colIndex)
+    setEditingSovCell(colIndex)
+  }
+
+  // Handle keyboard navigation in SOV table
+  const handleSovTableKeyDown = (e) => {
+    // If we're editing, let the input handle most keys
+    if (editingSovCell !== null) {
+      if (e.key === 'Escape') {
+        // Cancel editing
+        setEditData(location) // Reset to original
+        setEditingSovCell(null)
+      } else if (e.key === 'Enter') {
+        // Save and exit edit mode
+        handleSave()
+        setEditingSovCell(null)
+      } else if (e.key === 'Tab') {
+        e.preventDefault()
+        // Save current cell and move to next/previous
+        const nextCol = e.shiftKey
+          ? Math.max(-1, focusedSovCell - 1) // -1 for frozen column
+          : Math.min(sovColumns.length - 1, focusedSovCell + 1)
+        setEditingSovCell(null)
+        setFocusedSovCell(nextCol)
+        // Auto-start editing in next cell
+        setTimeout(() => setEditingSovCell(nextCol), 50)
+      }
+      return
+    }
+
+    // Navigation when not editing
+    if (focusedSovCell === null) return
+
+    let newCol = focusedSovCell
+
+    switch (e.key) {
+      case 'ArrowLeft':
+        newCol = Math.max(-1, focusedSovCell - 1) // -1 for frozen column
+        e.preventDefault()
+        break
+      case 'ArrowRight':
+        newCol = Math.min(sovColumns.length - 1, focusedSovCell + 1)
+        e.preventDefault()
+        break
+      case 'Tab':
+        e.preventDefault()
+        newCol = e.shiftKey
+          ? Math.max(-1, focusedSovCell - 1)
+          : Math.min(sovColumns.length - 1, focusedSovCell + 1)
+        break
+      case 'Enter':
+        // Enter edit mode
+        setEditingSovCell(focusedSovCell)
+        e.preventDefault()
+        return
+      default:
+        // If user types a character, start editing
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+          setEditingSovCell(focusedSovCell)
+          // Let the character be typed into the input
+        }
+        return
+    }
+
+    if (newCol !== focusedSovCell) {
+      setFocusedSovCell(newCol)
+    }
+  }
+
+  // Handle input blur in SOV cell
+  const handleSovInputBlur = () => {
+    setEditingSovCell(null)
+  }
+
+  // Handle input keydown in SOV cell
+  const handleSovInputKeyDown = (e, colIndex) => {
+    if (e.key === 'Escape') {
+      setEditData(location)
+      setEditingSovCell(null)
+    } else if (e.key === 'Enter') {
+      handleSave()
+      setEditingSovCell(null)
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      const nextCol = e.shiftKey
+        ? Math.max(-1, colIndex - 1)
+        : Math.min(sovColumns.length - 1, colIndex + 1)
+      setEditingSovCell(null)
+      setFocusedSovCell(nextCol)
+      setTimeout(() => setEditingSovCell(nextCol), 50)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -348,26 +480,19 @@ export default function LocationDetailPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl font-bold text-[#006B7D] mb-1">SOV Single Line</h2>
-              <p className="text-sm text-gray-500">Click edit to modify location details</p>
+              <p className="text-sm text-gray-500">Click to select, double-click or type to edit</p>
             </div>
-            {!isSovEditing ? (
-              <button
-                onClick={() => setIsSovEditing(true)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                Edit
-              </button>
-            ) : (
+            {editingSovCell !== null && (
               <div className="flex gap-2">
                 <button
-                  onClick={handleSave}
+                  onClick={() => { handleSave(); setEditingSovCell(null); }}
                   disabled={saving}
                   className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
                 <button
-                  onClick={() => { setIsSovEditing(false); setEditData(location) }}
+                  onClick={() => { setEditingSovCell(null); setEditData(location); }}
                   className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
                 >
                   Cancel
@@ -375,49 +500,124 @@ export default function LocationDetailPage() {
               </div>
             )}
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    {sovColumns.map(col => (
+          <div
+            className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden focus:outline-none"
+            tabIndex={0}
+            onKeyDown={handleSovTableKeyDown}
+          >
+            <div className="flex">
+              {/* Frozen Location Name Column */}
+              <div className="flex-shrink-0 bg-white border-r-2 border-gray-300 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <table>
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
                       <th
-                        key={col.key}
                         className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
-                        style={{ minWidth: col.width }}
+                        style={{ minWidth: 180 }}
                       >
-                        {col.label}
+                        Location Name
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="hover:bg-gray-50">
-                    {sovColumns.map(col => (
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
                       <td
-                        key={col.key}
-                        className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap border-r border-gray-100 last:border-r-0"
+                        data-sov-cell="-1"
+                        onClick={() => handleSovCellClick(-1)}
+                        onDoubleClick={() => handleSovCellDoubleClick(-1)}
+                        className={`px-0 py-0 text-sm whitespace-nowrap cursor-cell
+                          ${focusedSovCell === -1 ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' : 'bg-gray-50 hover:bg-gray-100'}
+                        `}
+                        style={{ minWidth: 180 }}
                       >
-                        {isSovEditing ? (
+                        {editingSovCell === -1 ? (
                           <input
-                            type={col.key.includes('value') || col.key === 'total_tiv' || col.key === 'num_buildings' || col.key === 'num_units' || col.key === 'square_footage' || col.key === 'orig_year_built' ? 'number' : 'text'}
-                            value={editData[col.key] || ''}
-                            onChange={(e) => handleInputChange(col.key, e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900 text-sm"
-                            style={{ minWidth: col.width - 16 }}
+                            type="text"
+                            data-sov-input="-1"
+                            value={editData.location_name || ''}
+                            onChange={(e) => handleInputChange('location_name', e.target.value)}
+                            onBlur={handleSovInputBlur}
+                            onKeyDown={(e) => handleSovInputKeyDown(e, -1)}
+                            className="w-full h-full px-4 py-3 border-2 border-blue-500 outline-none bg-white text-gray-900 text-sm font-medium"
+                            style={{ minWidth: 170 }}
                           />
                         ) : (
-                          col.key.includes('value') || col.key === 'total_tiv'
-                            ? location[col.key]
-                              ? `$${Number(location[col.key]).toLocaleString()}`
-                              : '-'
-                            : location[col.key] || '-'
+                          <div className="px-4 py-3 font-medium text-gray-900">
+                            {location.location_name || <span className="text-gray-400">-</span>}
+                          </div>
                         )}
                       </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Scrollable Columns */}
+              <div
+                ref={sovScrollRef}
+                className="overflow-x-auto flex-1"
+              >
+                <table className="min-w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      {sovColumns.map(col => (
+                        <th
+                          key={col.key}
+                          className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
+                          style={{ minWidth: col.width }}
+                        >
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {sovColumns.map((col, colIndex) => (
+                        <td
+                          key={col.key}
+                          data-sov-cell={colIndex}
+                          onClick={() => handleSovCellClick(colIndex)}
+                          onDoubleClick={() => handleSovCellDoubleClick(colIndex)}
+                          className={`px-0 py-0 text-sm text-gray-900 whitespace-nowrap border-r border-gray-100 last:border-r-0 cursor-cell
+                            ${focusedSovCell === colIndex ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' : 'hover:bg-gray-50'}
+                          `}
+                          style={{ minWidth: col.width, maxWidth: col.width }}
+                        >
+                          {editingSovCell === colIndex ? (
+                            <input
+                              type={col.key.includes('value') || col.key === 'total_tiv' || col.key === 'num_buildings' || col.key === 'num_units' || col.key === 'square_footage' || col.key === 'orig_year_built' ? 'number' : 'text'}
+                              data-sov-input={colIndex}
+                              value={editData[col.key] || ''}
+                              onChange={(e) => handleInputChange(col.key, e.target.value)}
+                              onBlur={handleSovInputBlur}
+                              onKeyDown={(e) => handleSovInputKeyDown(e, colIndex)}
+                              className="w-full h-full px-4 py-3 border-2 border-blue-500 outline-none bg-white text-gray-900 text-sm"
+                              style={{ minWidth: col.width - 4 }}
+                            />
+                          ) : (
+                            <div className="px-4 py-3 truncate" title={
+                              col.key.includes('value') || col.key === 'total_tiv'
+                                ? location[col.key] ? `$${Number(location[col.key]).toLocaleString()}` : '-'
+                                : location[col.key] || '-'
+                            }>
+                              {col.key.includes('value') || col.key === 'total_tiv'
+                                ? location[col.key]
+                                  ? `$${Number(location[col.key]).toLocaleString()}`
+                                  : <span className="text-gray-400">-</span>
+                                : location[col.key] || <span className="text-gray-400">-</span>
+                              }
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+              Click to select • Double-click or Enter to edit • Arrow keys to navigate • Tab to move between cells • Esc to cancel
             </div>
           </div>
         </div>

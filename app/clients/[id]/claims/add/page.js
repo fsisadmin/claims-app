@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Header from '@/components/Header'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,10 +9,13 @@ import { useAuth } from '@/contexts/AuthContext'
 export default function AddClaimForClientPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
+  const fromIncidentId = searchParams.get('from_incident')
   const { user, profile, loading: authLoading } = useAuth()
 
   const [client, setClient] = useState(null)
   const [locations, setLocations] = useState([])
+  const [sourceIncident, setSourceIncident] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -66,12 +69,39 @@ export default function AddClaimForClientPage() {
 
       if (locationsError) throw locationsError
       setLocations(locationsData || [])
+
+      // If coming from an incident, fetch incident data and pre-populate form
+      if (fromIncidentId) {
+        const { data: incidentData, error: incidentError } = await supabase
+          .from('incidents')
+          .select('*')
+          .eq('id', fromIncidentId)
+          .eq('organization_id', profile.organization_id)
+          .single()
+
+        if (!incidentError && incidentData) {
+          setSourceIncident(incidentData)
+          // Pre-populate form with incident data
+          setFormData(prev => ({
+            ...prev,
+            claimant: incidentData.claimant || incidentData.reported_by || '',
+            location_id: incidentData.location_id || '',
+            property_name: incidentData.property_name || '',
+            loss_date: incidentData.loss_date || '',
+            report_date: incidentData.report_date || new Date().toISOString().split('T')[0],
+            policy_number: incidentData.policy || '',
+            loss_description: incidentData.event_description || incidentData.accident_description || '',
+            claim_type: incidentData.incident_type || '',
+            cause_of_loss: incidentData.cause_of_loss || '',
+          }))
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
       setLoading(false)
     }
-  }, [profile?.organization_id, params.id])
+  }, [profile?.organization_id, params.id, fromIncidentId])
 
   useEffect(() => {
     if (user && profile) {
@@ -95,27 +125,34 @@ export default function AddClaimForClientPage() {
 
     setSaving(true)
     try {
+      const insertData = {
+        organization_id: profile.organization_id,
+        client_id: params.id, // Pre-set to this client
+        claim_number: formData.claim_number.trim(),
+        claimant: formData.claimant.trim() || null,
+        location_id: formData.location_id || null,
+        coverage: formData.coverage || null,
+        property_name: formData.property_name.trim() || null,
+        status: formData.status,
+        loss_date: formData.loss_date || null,
+        report_date: formData.report_date || null,
+        policy_number: formData.policy_number.trim() || null,
+        tpa_claim_number: formData.tpa_claim_number.trim() || null,
+        loss_description: formData.loss_description.trim() || null,
+        total_incurred: parseFloat(formData.total_incurred) || 0,
+        claim_type: formData.claim_type.trim() || null,
+        cause_of_loss: formData.cause_of_loss.trim() || null,
+        created_by: user.id,
+      }
+
+      // Link to source incident if creating from one
+      if (fromIncidentId) {
+        insertData.incident_id = fromIncidentId
+      }
+
       const { data, error } = await supabase
         .from('claims')
-        .insert({
-          organization_id: profile.organization_id,
-          client_id: params.id, // Pre-set to this client
-          claim_number: formData.claim_number.trim(),
-          claimant: formData.claimant.trim() || null,
-          location_id: formData.location_id || null,
-          coverage: formData.coverage || null,
-          property_name: formData.property_name.trim() || null,
-          status: formData.status,
-          loss_date: formData.loss_date || null,
-          report_date: formData.report_date || null,
-          policy_number: formData.policy_number.trim() || null,
-          tpa_claim_number: formData.tpa_claim_number.trim() || null,
-          loss_description: formData.loss_description.trim() || null,
-          total_incurred: parseFloat(formData.total_incurred) || 0,
-          claim_type: formData.claim_type.trim() || null,
-          cause_of_loss: formData.cause_of_loss.trim() || null,
-          created_by: user.id,
-        })
+        .insert(insertData)
         .select()
         .single()
 
@@ -170,6 +207,13 @@ export default function AddClaimForClientPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-gray-900">New Claim</h1>
             <p className="text-gray-600 mt-1">for {client.name}</p>
+            {sourceIncident && (
+              <div className="mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  Creating from Incident #{sourceIncident.incident_number} - Form has been pre-populated with incident data
+                </p>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">

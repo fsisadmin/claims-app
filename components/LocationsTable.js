@@ -384,6 +384,45 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     }
   }, [handleKeyNavigation])
 
+  // Auto-scroll to keep focused cell visible
+  useEffect(() => {
+    if (focusedCell.row === null || focusedCell.col === null) return
+
+    // Find the cell element and scroll it into view
+    const cellElement = document.querySelector(`[data-cell="${focusedCell.row}-${focusedCell.col}"]`)
+    if (cellElement && tableRef.current) {
+      const tableContainer = tableRef.current
+      const cellRect = cellElement.getBoundingClientRect()
+      const containerRect = tableContainer.getBoundingClientRect()
+
+      // Account for sticky columns (checkbox ~40px + row number ~48px = ~88px)
+      const stickyOffset = 88
+
+      // Horizontal scroll - check if cell is outside visible area
+      if (cellRect.left < containerRect.left + stickyOffset) {
+        // Cell is to the left of sticky columns, scroll left
+        const scrollAmount = cellRect.left - containerRect.left - stickyOffset - 10
+        tableContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+      } else if (cellRect.right > containerRect.right) {
+        // Cell is to the right, scroll right
+        const scrollAmount = cellRect.right - containerRect.right + 10
+        tableContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+      }
+
+      // Vertical scroll - check if cell is outside visible area
+      const headerHeight = 48 // Approximate header height
+      if (cellRect.top < containerRect.top + headerHeight) {
+        // Cell is above visible area, scroll up
+        const scrollAmount = cellRect.top - containerRect.top - headerHeight - 10
+        tableContainer.scrollBy({ top: scrollAmount, behavior: 'smooth' })
+      } else if (cellRect.bottom > containerRect.bottom) {
+        // Cell is below visible area, scroll down
+        const scrollAmount = cellRect.bottom - containerRect.bottom + 10
+        tableContainer.scrollBy({ top: scrollAmount, behavior: 'smooth' })
+      }
+    }
+  }, [focusedCell])
+
   // Save cell change to database
   const handleCellSave = useCallback(async (rowId, field, value) => {
     setSaving(true)
@@ -880,6 +919,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                   {COLUMNS.map((col, colIndex) => (
                     <td
                       key={col.key}
+                      data-cell={`${index}-${colIndex}`}
                       className="px-0 py-0 text-sm border-r border-gray-100 last:border-r-0"
                       style={{ minWidth: col.width, maxWidth: col.width }}
                     >
