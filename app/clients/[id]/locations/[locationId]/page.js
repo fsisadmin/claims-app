@@ -23,6 +23,7 @@ export default function LocationDetailPage() {
   const sovScrollRef = useRef(null)
   const [focusedSovCell, setFocusedSovCell] = useState(null) // Which cell is focused (for navigation)
   const [editingSovCell, setEditingSovCell] = useState(null) // Which cell is being edited
+  const [sovUndoStack, setSovUndoStack] = useState([]) // Undo stack for SOV changes
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -117,6 +118,19 @@ export default function LocationDetailPage() {
   async function handleSave() {
     setSaving(true)
     try {
+      // Track changes for undo before saving
+      if (location && editData) {
+        const changes = []
+        Object.keys(editData).forEach(key => {
+          if (editData[key] !== location[key]) {
+            changes.push({ field: key, oldValue: location[key], newValue: editData[key] })
+          }
+        })
+        if (changes.length > 0) {
+          setSovUndoStack(prev => [...prev.slice(-49), { changes, previousData: { ...location } }])
+        }
+      }
+
       // Security: Include organization_id in the update query
       const { error } = await supabase
         .from('locations')
@@ -133,6 +147,56 @@ export default function LocationDetailPage() {
       alert('Failed to save changes')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Undo last SOV change
+  async function handleSovUndo() {
+    if (sovUndoStack.length === 0) return
+
+    const lastAction = sovUndoStack[sovUndoStack.length - 1]
+    setSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from('locations')
+        .update(lastAction.previousData)
+        .eq('id', params.locationId)
+        .eq('organization_id', profile.organization_id)
+
+      if (error) throw error
+
+      // Remove from undo stack
+      setSovUndoStack(prev => prev.slice(0, -1))
+
+      // Update local state and SWR cache
+      setEditData(lastAction.previousData)
+      mutateLocation(lastAction.previousData, false)
+    } catch (error) {
+      console.error('Error undoing:', error)
+      alert('Failed to undo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Copy focused SOV cell value to clipboard
+  async function handleSovCopy() {
+    if (focusedSovCell === null) return
+
+    let value
+    if (focusedSovCell === -1) {
+      value = location?.location_name
+    } else {
+      const col = sovColumns[focusedSovCell]
+      value = location?.[col?.key]
+    }
+
+    const textValue = value != null ? String(value) : ''
+    try {
+      await navigator.clipboard.writeText(textValue)
+    } catch (error) {
+      console.error('Failed to copy:', error)
     }
   }
 
@@ -214,6 +278,32 @@ export default function LocationDetailPage() {
 
   // Handle keyboard navigation in SOV table
   const handleSovTableKeyDown = (e) => {
+    // Handle Ctrl+Z for undo (works anywhere in table)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault()
+      handleSovUndo()
+      return
+    }
+
+    // Handle Ctrl+C for copy (when cell is focused, not editing)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+      if (focusedSovCell !== null && editingSovCell === null) {
+        e.preventDefault()
+        handleSovCopy()
+      }
+      return
+    }
+
+    // Handle Ctrl+V for paste (when cell is focused)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+      if (focusedSovCell !== null && editingSovCell === null) {
+        // Start editing to allow paste
+        setEditingSovCell(focusedSovCell)
+        // Let the paste event propagate to the input
+      }
+      return
+    }
+
     // If we're editing, let the input handle most keys
     if (editingSovCell !== null) {
       if (e.key === 'Escape') {
@@ -480,10 +570,22 @@ export default function LocationDetailPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl font-bold text-[#006B7D] mb-1">SOV Single Line</h2>
-              <p className="text-sm text-gray-500">Click to select, double-click or type to edit</p>
+              <p className="text-sm text-gray-500">Click to select, double-click or type to edit | Ctrl+C to copy | Ctrl+V to paste | Ctrl+Z to undo</p>
             </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSovUndo}
+                disabled={saving || sovUndoStack.length === 0}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                title={sovUndoStack.length > 0 ? `Undo (${sovUndoStack.length} available) - Ctrl+Z` : 'Nothing to undo'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                Undo {sovUndoStack.length > 0 && `(${sovUndoStack.length})`}
+              </button>
             {editingSovCell !== null && (
-              <div className="flex gap-2">
+              <>
                 <button
                   onClick={() => { handleSave(); setEditingSovCell(null); }}
                   disabled={saving}
@@ -497,8 +599,9 @@ export default function LocationDetailPage() {
                 >
                   Cancel
                 </button>
-              </div>
+              </>
             )}
+            </div>
           </div>
           <div
             className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden focus:outline-none"

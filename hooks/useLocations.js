@@ -12,7 +12,7 @@ const LOCATIONS_LIST_COLUMNS = `
   construction_description, orig_year_built,
   real_property_value, personal_property_value, total_tiv,
   tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
-  client_id, organization_id
+  client_id, organization_id, created_at
 `
 
 // Fetcher function for locations
@@ -26,7 +26,7 @@ async function fetchLocations({ clientId, organizationId }) {
     .select(LOCATIONS_LIST_COLUMNS)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
-    .order('location_name', { ascending: true })
+    .order('created_at', { ascending: true }) // Oldest first, new rows at bottom
     .limit(500) // Prevent unbounded queries
 
   if (error) throw error

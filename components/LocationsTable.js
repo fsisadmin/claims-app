@@ -142,6 +142,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
   const [focusedCell, setFocusedCell] = useState({ row: null, col: null })
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
+  const [undoStack, setUndoStack] = useState([]) // Stack for undo history
   const tableRef = useRef(null)
 
   useEffect(() => {
@@ -321,8 +322,78 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     }
   }, [handleTablePaste])
 
+  // Undo last change
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return
+
+    const lastAction = undoStack[undoStack.length - 1]
+    setSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from('locations')
+        .update({ [lastAction.field]: lastAction.oldValue })
+        .eq('id', lastAction.rowId)
+        .eq('organization_id', organizationId)
+
+      if (error) throw error
+
+      // Remove from undo stack
+      setUndoStack(prev => prev.slice(0, -1))
+
+      // Update local state
+      setData(prev => prev.map(row =>
+        row.id === lastAction.rowId ? { ...row, [lastAction.field]: lastAction.oldValue } : row
+      ))
+    } catch (error) {
+      console.error('Error undoing:', error)
+      alert('Failed to undo')
+    } finally {
+      setSaving(false)
+    }
+  }, [undoStack, organizationId])
+
+  // Copy focused cell value to clipboard
+  const handleCopy = useCallback(async () => {
+    if (focusedCell.row === null || focusedCell.col === null) return
+
+    const row = paginatedData[focusedCell.row]
+    if (!row) return
+
+    const column = COLUMNS[focusedCell.col]
+    if (!column) return
+
+    const value = row[column.key]
+    const textValue = value != null ? String(value) : ''
+
+    try {
+      await navigator.clipboard.writeText(textValue)
+    } catch (error) {
+      console.error('Failed to copy:', error)
+    }
+  }, [focusedCell, paginatedData])
+
   // Handle keyboard navigation between cells
   const handleKeyNavigation = useCallback((e) => {
+    // Handle Ctrl+Z for undo (works anywhere in table)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault()
+      handleUndo()
+      return
+    }
+
+    // Handle Ctrl+C for copy (when cell is focused)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+      if (focusedCell.row !== null && focusedCell.col !== null) {
+        // Don't prevent default if in input - let native copy work
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+          e.preventDefault()
+          handleCopy()
+        }
+      }
+      return
+    }
+
     if (focusedCell.row === null || focusedCell.col === null) return
 
     // Only handle arrow keys when not in an input
@@ -371,7 +442,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     if (newRow !== focusedCell.row || newCol !== focusedCell.col) {
       setFocusedCell({ row: newRow, col: newCol })
     }
-  }, [focusedCell, paginatedData.length])
+  }, [focusedCell, paginatedData.length, handleUndo, handleCopy])
 
   // Attach keyboard navigation listener
   useEffect(() => {
@@ -425,6 +496,10 @@ export default function LocationsTable({ locations = [], clientId, organizationI
 
   // Save cell change to database
   const handleCellSave = useCallback(async (rowId, field, value) => {
+    // Get old value for undo stack
+    const oldRow = data.find(r => r.id === rowId)
+    const oldValue = oldRow ? oldRow[field] : null
+
     setSaving(true)
     try {
       // Security: Include organization_id in the update query to prevent cross-org edits
@@ -436,6 +511,9 @@ export default function LocationsTable({ locations = [], clientId, organizationI
 
       if (error) throw error
 
+      // Push to undo stack (limit to 50 actions)
+      setUndoStack(prev => [...prev.slice(-49), { rowId, field, oldValue, newValue: value }])
+
       // Update local state
       setData(prev => prev.map(row =>
         row.id === rowId ? { ...row, [field]: value } : row
@@ -446,7 +524,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     } finally {
       setSaving(false)
     }
-  }, [organizationId])
+  }, [organizationId, data])
 
   // Toggle row selection
   const toggleRowSelection = (rowId) => {
@@ -561,8 +639,24 @@ export default function LocationsTable({ locations = [], clientId, organizationI
 
       if (error) throw error
 
+      // Add new row to the end
       setData(prev => [...prev, newRow])
-      onRefresh?.()
+
+      // Clear sorting so new row appears at the bottom
+      setSortColumn(null)
+      setSortDirection('asc')
+
+      // Calculate the last page after adding and navigate to it
+      const newTotal = data.length + 1
+      const lastPage = Math.ceil(newTotal / pageSize)
+      setCurrentPage(lastPage)
+
+      // Focus the first editable cell of the new row (after render)
+      setTimeout(() => {
+        const newRowIndex = (newTotal - 1) % pageSize // Index on the last page
+        setFocusedCell({ row: newRowIndex, col: 0 })
+      }, 100)
+      // Don't call onRefresh() here - it would re-fetch and re-sort data from DB
     } catch (error) {
       console.error('Error adding row:', error)
       alert('Failed to add new location')
@@ -836,6 +930,8 @@ export default function LocationsTable({ locations = [], clientId, organizationI
         onPasteExcel={() => setShowPasteModal(true)}
         onDuplicate={handleDuplicateSelected}
         onDelete={handleDeleteSelected}
+        onUndo={handleUndo}
+        undoCount={undoStack.length}
         selectedCount={selectedRows.size}
         saving={saving}
         searchTerm={searchTerm}

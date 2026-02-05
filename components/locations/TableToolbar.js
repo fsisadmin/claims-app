@@ -5,6 +5,8 @@ export default function TableToolbar({
   onPasteExcel,
   onDuplicate,
   onDelete,
+  onUndo,
+  undoCount = 0,
   selectedCount,
   saving,
   searchTerm,
@@ -32,6 +34,17 @@ export default function TableToolbar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
           Paste Excel
+        </button>
+        <button
+          onClick={onUndo}
+          disabled={saving || undoCount === 0}
+          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+          title={undoCount > 0 ? `Undo (${undoCount} available) - Ctrl+Z` : 'Nothing to undo'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+          Undo
         </button>
 
         {selectedCount > 0 && (
