@@ -50,7 +50,7 @@ function parseInputValue(value, type) {
 
 export { formatDisplayValue, parseInputValue }
 
-export default function EditableCell({ value, column, rowId, rowIndex, colIndex, onSave, isSelected, isFocused, onFocus }) {
+export default function EditableCell({ value, displayValue, column, rowId, rowIndex, colIndex, onSave, isSelected, isFocused, onFocus }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value ?? '')
   const inputRef = useRef(null)
@@ -157,6 +157,9 @@ export default function EditableCell({ value, column, rowId, rowIndex, colIndex,
     )
   }
 
+  // Use displayValue if provided, otherwise format the value
+  const shownValue = displayValue !== undefined ? displayValue : formatDisplayValue(value, column.format, column)
+
   return (
     <div
       ref={cellRef}
@@ -168,9 +171,9 @@ export default function EditableCell({ value, column, rowId, rowIndex, colIndex,
         ${isSelected ? 'bg-blue-50' : ''}
         ${isFocused ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' : ''}
       `}
-      title={formatDisplayValue(value, column.format, column)}
+      title={shownValue || ''}
     >
-      {formatDisplayValue(value, column.format, column) || <span className="text-gray-400">-</span>}
+      {shownValue || <span className="text-gray-400">-</span>}
     </div>
   )
 }

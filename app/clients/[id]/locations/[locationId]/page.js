@@ -1081,7 +1081,6 @@ export default function LocationDetailPage() {
                             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Effective</th>
                             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Expiration</th>
                             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location TIV</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -1116,9 +1115,6 @@ export default function LocationDetailPage() {
                                 }`}>
                                   {pl.policy.status ? pl.policy.status.charAt(0).toUpperCase() + pl.policy.status.slice(1) : '-'}
                                 </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900">
-                                {pl.location_tiv ? `$${Number(pl.location_tiv).toLocaleString()}` : '-'}
                               </td>
                             </tr>
                           ))}

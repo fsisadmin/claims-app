@@ -5,9 +5,10 @@ import useSWR from 'swr'
 import { supabase } from '@/lib/supabase'
 
 // Columns needed for locations list view (reduces payload from 100+ to ~20 columns)
+// Uses locations_with_state view to get state_code from the lookup
 const LOCATIONS_LIST_COLUMNS = `
   id, location_name, company, entity_name,
-  street_address, city, state, zip, county,
+  street_address, city, state, state_code, zip, county,
   num_buildings, num_units, square_footage,
   construction_description, orig_year_built,
   real_property_value, personal_property_value, total_tiv,
@@ -22,8 +23,9 @@ async function fetchLocations({ clientId, organizationId }) {
     return []
   }
 
+  // Query from view to get state_code from the lookup
   const { data, error } = await supabase
-    .from('locations')
+    .from('locations_with_state')
     .select(LOCATIONS_LIST_COLUMNS)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
@@ -32,6 +34,36 @@ async function fetchLocations({ clientId, organizationId }) {
 
   if (error) throw error
   return data || []
+}
+
+// Fetcher function for state codes (for dropdowns with UUID values)
+async function fetchStateCodes() {
+  const { data, error } = await supabase
+    .from('state_codes')
+    .select('id, code, name')
+    .order('code', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+// Custom hook for fetching state codes (cached globally)
+export function useStateCodes() {
+  const { data, error, isLoading } = useSWR(
+    'state_codes',
+    fetchStateCodes,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 300000, // 5 minutes - state codes rarely change
+    }
+  )
+
+  return {
+    stateCodes: data || [],
+    isLoading,
+    isError: error,
+  }
 }
 
 // Custom hook for fetching locations with SWR caching

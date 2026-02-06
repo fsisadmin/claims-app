@@ -254,7 +254,7 @@ export default function AddPolicyForClientPage() {
                   type="text"
                   value={formData.policy_number}
                   onChange={(e) => handleChange('policy_number', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   required
                 />
               </div>
@@ -267,7 +267,7 @@ export default function AddPolicyForClientPage() {
                 <select
                   value={formData.policy_type}
                   onChange={(e) => handleChange('policy_type', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 >
                   <option value="">Select type...</option>
                   {policyTypes.map(type => (
@@ -285,7 +285,7 @@ export default function AddPolicyForClientPage() {
                   type="text"
                   value={formData.carrier}
                   onChange={(e) => handleChange('carrier', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 />
               </div>
 
@@ -298,7 +298,7 @@ export default function AddPolicyForClientPage() {
                   type="text"
                   value={formData.carrier_policy_number}
                   onChange={(e) => handleChange('carrier_policy_number', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 />
               </div>
 
@@ -311,7 +311,7 @@ export default function AddPolicyForClientPage() {
                   type="date"
                   value={formData.effective_date}
                   onChange={(e) => handleChange('effective_date', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 />
               </div>
 
@@ -324,7 +324,7 @@ export default function AddPolicyForClientPage() {
                   type="date"
                   value={formData.expiration_date}
                   onChange={(e) => handleChange('expiration_date', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 />
               </div>
 
@@ -336,7 +336,7 @@ export default function AddPolicyForClientPage() {
                 <select
                   value={formData.status}
                   onChange={(e) => handleChange('status', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                 >
                   <option value="active">Active</option>
                   <option value="pending">Pending</option>
@@ -365,7 +365,7 @@ export default function AddPolicyForClientPage() {
                     step="0.01"
                     value={formData.premium}
                     onChange={(e) => handleChange('premium', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   />
                 </div>
               </div>
@@ -382,7 +382,7 @@ export default function AddPolicyForClientPage() {
                     step="0.01"
                     value={formData.deductible}
                     onChange={(e) => handleChange('deductible', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   />
                 </div>
               </div>
@@ -399,7 +399,7 @@ export default function AddPolicyForClientPage() {
                     step="0.01"
                     value={formData.total_insured_value}
                     onChange={(e) => handleChange('total_insured_value', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   />
                 </div>
               </div>
@@ -416,7 +416,7 @@ export default function AddPolicyForClientPage() {
                     step="0.01"
                     value={formData.per_occurrence_limit}
                     onChange={(e) => handleChange('per_occurrence_limit', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   />
                 </div>
               </div>
@@ -433,7 +433,7 @@ export default function AddPolicyForClientPage() {
                     step="0.01"
                     value={formData.aggregate_limit}
                     onChange={(e) => handleChange('aggregate_limit', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
                   />
                 </div>
               </div>
@@ -517,7 +517,7 @@ export default function AddPolicyForClientPage() {
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D]"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
               placeholder="Add any notes about this policy..."
             />
           </div>

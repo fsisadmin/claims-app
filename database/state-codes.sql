@@ -4,9 +4,10 @@
 -- Drop existing table if it exists (to ensure clean schema)
 DROP TABLE IF EXISTS state_codes;
 
--- Create the state_codes table
+-- Create the state_codes table with UUID primary key for WhaleSync compatibility
 CREATE TABLE state_codes (
-  code VARCHAR(2) PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code VARCHAR(2) UNIQUE NOT NULL,
   name VARCHAR(50) NOT NULL,
   latitude DECIMAL(10, 6),
   longitude DECIMAL(10, 6),

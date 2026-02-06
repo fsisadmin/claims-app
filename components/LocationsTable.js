@@ -4,19 +4,21 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { EditableCell, parseInputValue, PasteModal, TableToolbar, PaginationControls } from './locations'
-import { STATES } from '@/lib/states'
-
-// Generate state options for dropdown
-const STATE_OPTIONS = STATES.map(s => ({ value: s.code, label: `${s.code} - ${s.name}` }))
 
 // Column definitions with labels and field names
+// Width constants for sticky column positioning
+const CHECKBOX_WIDTH = 40    // w-10
+const ROW_NUM_WIDTH = 48     // w-12
+const LOCATION_NAME_WIDTH = 200
+const STICKY_OFFSET = CHECKBOX_WIDTH + ROW_NUM_WIDTH // 88px
+
 const COLUMNS = [
   // Core Location Info
-  { key: 'location_name', label: 'Location Name', width: 200, type: 'text' },
+  { key: 'location_name', label: 'Location Name', width: LOCATION_NAME_WIDTH, type: 'text', frozen: true },
   { key: 'company', label: 'Company', width: 150, type: 'text' },
   { key: 'street_address', label: 'Street Address', width: 200, type: 'text' },
   { key: 'city', label: 'City', width: 120, type: 'text' },
-  { key: 'state', label: 'State', width: 100, type: 'select', options: STATE_OPTIONS },
+  { key: 'state_code', label: 'State', width: 100, type: 'text' }, // Read-only, comes from view lookup
   { key: 'zip', label: 'Zip', width: 80, type: 'text' },
   { key: 'county', label: 'County', width: 120, type: 'text' },
   { key: 'full_address', label: 'Full Address', width: 250, type: 'text' },
@@ -318,7 +320,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     } finally {
       setSaving(false)
     }
-  }, [focusedCell, paginatedData, organizationId])
+  }, [focusedCell, paginatedData, organizationId, COLUMNS])
 
   // Attach paste listener to table
   useEffect(() => {
@@ -380,7 +382,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     } catch (error) {
       console.error('Failed to copy:', error)
     }
-  }, [focusedCell, paginatedData])
+  }, [focusedCell, paginatedData, COLUMNS])
 
   // Handle keyboard navigation between cells
   const handleKeyNavigation = useCallback((e) => {
@@ -451,7 +453,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     if (newRow !== focusedCell.row || newCol !== focusedCell.col) {
       setFocusedCell({ row: newRow, col: newCol })
     }
-  }, [focusedCell, paginatedData.length, handleUndo, handleCopy])
+  }, [focusedCell, paginatedData.length, handleUndo, handleCopy, COLUMNS])
 
   // Attach keyboard navigation listener
   useEffect(() => {
@@ -475,8 +477,8 @@ export default function LocationsTable({ locations = [], clientId, organizationI
       const cellRect = cellElement.getBoundingClientRect()
       const containerRect = tableContainer.getBoundingClientRect()
 
-      // Account for sticky columns (checkbox ~40px + row number ~48px = ~88px)
-      const stickyOffset = 88
+      // Account for sticky columns (checkbox 40px + row number 48px + location name 200px = 288px)
+      const stickyOffset = STICKY_OFFSET + LOCATION_NAME_WIDTH
 
       // Horizontal scroll - check if cell is outside visible area
       if (cellRect.left < containerRect.left + stickyOffset) {
@@ -956,10 +958,17 @@ export default function LocationsTable({ locations = [], clientId, organizationI
           tabIndex={0}
         >
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50 sticky top-0 z-10">
+            <colgroup>
+              <col style={{ width: CHECKBOX_WIDTH }} />
+              <col style={{ width: ROW_NUM_WIDTH }} />
+              {COLUMNS.map((col) => (
+                <col key={col.key} style={{ width: col.width }} />
+              ))}
+            </colgroup>
+            <thead className="bg-gray-50 sticky top-0 z-20">
               <tr>
                 {/* Checkbox column */}
-                <th className="w-10 px-2 py-3 bg-gray-50 border-r border-gray-200 sticky left-0 z-20">
+                <th className="w-10 px-2 py-3 bg-gray-50 border-r border-gray-200 sticky left-0 z-30">
                   <input
                     type="checkbox"
                     checked={paginatedData.length > 0 && paginatedData.every(r => selectedRows.has(r.id))}
@@ -968,15 +977,25 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                   />
                 </th>
                 {/* Row number column */}
-                <th className="w-12 px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50 border-r border-gray-200 sticky left-10 z-20">
+                <th className="w-12 px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50 border-r border-gray-200 sticky left-10 z-30">
                   #
                 </th>
-                {COLUMNS.map((col) => (
+                {COLUMNS.map((col, colIndex) => {
+                  // Check if previous column was frozen (to add padding after frozen section)
+                  const prevColFrozen = colIndex > 0 && COLUMNS[colIndex - 1].frozen
+                  return (
                   <th
                     key={col.key}
                     onClick={() => handleSort(col.key)}
-                    className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 select-none"
-                    style={{ minWidth: col.width }}
+                    className={`py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 select-none
+                      ${col.frozen ? 'sticky z-30 border-r-2 border-gray-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] overflow-hidden px-2' : ''}
+                      ${prevColFrozen ? 'pl-6 pr-2' : 'px-2'}`}
+                    style={{
+                      minWidth: col.width,
+                      width: col.frozen ? col.width : undefined,
+                      maxWidth: col.frozen ? col.width : undefined,
+                      ...(col.frozen ? { left: STICKY_OFFSET } : {})
+                    }}
                   >
                     <div className="flex items-center gap-1">
                       {col.label}
@@ -999,7 +1018,8 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                       </span>
                     </div>
                   </th>
-                ))}
+                  )
+                })}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
@@ -1021,18 +1041,28 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                   <td className="w-12 px-2 py-0 text-xs text-gray-600 font-medium bg-white border-r border-gray-100 sticky left-10">
                     {startIndex + index + 1}
                   </td>
-                  {COLUMNS.map((col, colIndex) => (
+                  {COLUMNS.map((col, colIndex) => {
+                    // Check if previous column was frozen (to add padding after frozen section)
+                    const prevColFrozen = colIndex > 0 && COLUMNS[colIndex - 1].frozen
+                    return (
                     <td
                       key={col.key}
                       data-cell={`${index}-${colIndex}`}
-                      className="px-0 py-0 text-sm border-r border-gray-100 last:border-r-0"
-                      style={{ minWidth: col.width, maxWidth: col.width }}
+                      className={`py-0 text-sm border-r border-gray-100 last:border-r-0
+                        ${col.frozen ? 'sticky bg-white z-10 border-r-2 border-gray-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] overflow-hidden px-0' : ''}
+                        ${prevColFrozen ? 'pl-4' : 'px-0'}`}
+                      style={{
+                        minWidth: col.width,
+                        maxWidth: col.width,
+                        width: col.frozen ? col.width : undefined,
+                        ...(col.frozen ? { left: STICKY_OFFSET } : {})
+                      }}
                     >
                       {col.key === 'location_name' ? (
                         <div
                           onClick={() => router.push(`/clients/${clientId}/locations/${location.id}`)}
                           className={`w-full h-full px-2 py-2 cursor-pointer truncate text-[#006B7D] hover:text-[#008BA3] hover:underline font-medium
-                            ${selectedRows.has(location.id) ? 'bg-blue-50' : ''}
+                            ${selectedRows.has(location.id) ? 'bg-blue-50' : 'bg-white'}
                           `}
                           title={location[col.key] || 'View Location'}
                         >
@@ -1052,7 +1082,8 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                         />
                       )}
                     </td>
-                  ))}
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>

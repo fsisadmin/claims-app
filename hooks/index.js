@@ -5,6 +5,7 @@ export {
   useClients,
   useClientsPaginated,
   useRecentClients,
+  useStateCodes,
   trackClientView,
   getRecentClientIds
 } from './useLocations'

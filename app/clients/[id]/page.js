@@ -128,14 +128,22 @@ export default function ClientDetailPage() {
     try {
       const { data, error } = await supabase
         .from('claims')
-        .select('*')
+        .select(`
+          *,
+          location:locations(id, location_name)
+        `)
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('report_date', { ascending: false })
         .limit(200)
 
       if (error) throw error
-      setClaims(data || [])
+      // Map location_name to property_name for the ClaimsTable
+      const claimsWithProperty = (data || []).map(claim => ({
+        ...claim,
+        property_name: claim.location?.location_name || claim.property_name || null
+      }))
+      setClaims(claimsWithProperty)
       setClaimsFetched(true)
     } catch (error) {
       console.error('Error fetching claims:', error)
@@ -456,24 +464,6 @@ export default function ClientDetailPage() {
                 </div>
               </button>
               <button
-                onClick={() => setActiveTab('sold-locations')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'sold-locations'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                  Sold Locations
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {soldLocations.length}
-                  </span>
-                </div>
-              </button>
-              <button
                 onClick={() => setActiveTab('policies')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
                   activeTab === 'policies'
@@ -524,6 +514,24 @@ export default function ClientDetailPage() {
                   Incidents
                   <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
                     {incidentsFetched ? incidents.length : incidentsCount}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('sold-locations')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'sold-locations'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  Sold Locations
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {soldLocations.length}
                   </span>
                 </div>
               </button>
