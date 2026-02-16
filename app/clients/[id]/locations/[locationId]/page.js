@@ -7,6 +7,7 @@ import Header from '@/components/Header'
 import CommentSidebar from '@/components/CommentSidebar'
 import TasksSection from '@/components/TasksSection'
 import { supabase } from '@/lib/supabase'
+import { US_STATES } from '@/lib/constants'
 import { useLocation, useClient } from '@/hooks'
 
 export default function LocationDetailPage() {
@@ -239,8 +240,24 @@ export default function LocationDetailPage() {
     }
   }
 
+  const ISO_CONST_MAP = {
+    '1': 'Frame',
+    '2': 'Joisted Masonry',
+    '3': 'Non-Combustible',
+    '4': 'Masonry Non-Combustible',
+    '5': 'Modified Fire Resistive',
+    '6': 'Fire Resistive',
+  }
+
   function handleInputChange(field, value) {
-    setEditData(prev => ({ ...prev, [field]: value }))
+    setEditData(prev => {
+      const updated = { ...prev, [field]: value }
+      // Auto-populate construction_description when iso_const changes
+      if (field === 'iso_const' && ISO_CONST_MAP[value]) {
+        updated.construction_description = ISO_CONST_MAP[value]
+      }
+      return updated
+    })
   }
 
   // Risk assessment color coding
@@ -288,20 +305,27 @@ export default function LocationDetailPage() {
 
   // SOV Single Line columns - location_name is frozen, rest are scrollable
   const sovColumns = [
-    { key: 'entity_name', label: 'Entity Name', width: 150 },
-    { key: 'street_address', label: 'Street Address', width: 180 },
+    { key: 'entity_name', label: 'Entity Name', width: 200 },
+    { key: 'company', label: 'Company', width: 150 },
+    { key: 'street_address', label: 'Street Address', width: 200 },
     { key: 'city', label: 'City', width: 120 },
-    { key: 'state', label: 'State', width: 80 },
+    { key: 'state', label: 'State', width: 100, type: 'dropdown', options: US_STATES.map(s => s.code) },
     { key: 'zip', label: 'Zip', width: 80 },
     { key: 'county', label: 'County', width: 120 },
-    { key: 'num_buildings', label: '# Bldgs', width: 80 },
-    { key: 'num_units', label: '# Units', width: 80 },
-    { key: 'square_footage', label: 'Sq Ft', width: 100 },
-    { key: 'construction_description', label: 'Construction', width: 150 },
-    { key: 'orig_year_built', label: 'Year Built', width: 100 },
-    { key: 'real_property_value', label: 'Real Property $', width: 130 },
-    { key: 'personal_property_value', label: 'Personal Property $', width: 140 },
-    { key: 'total_tiv', label: 'Total TIV', width: 120 },
+    { key: 'is_prop_within_1000ft_saltwater', label: 'Within 1000ft Saltwater', width: 170 },
+    { key: 'num_buildings', label: '# of Bldgs', width: 90 },
+    { key: 'iso_const', label: 'ISO Const', width: 100, type: 'dropdown', options: ['1','2','3','4','5','6','Combo'] },
+    { key: 'construction_description', label: 'Construction Description', width: 200, type: 'dropdown', options: ['Frame','Joisted Masonry','Non-Combustible','Masonry Non-Combustible','Modified Fire Resistive','Fire Resistive','Combo'] },
+    { key: 'num_stories', label: '# of Stories', width: 90 },
+    { key: 'orig_year_built', label: 'Orig Year Built', width: 120 },
+    { key: 'real_property_value', label: 'Real Property Value', width: 150 },
+    { key: 'personal_property_value', label: 'Personal Property Value', width: 160 },
+    { key: 'other_value', label: 'Other Value $', width: 120 },
+    { key: 'bi_rental_income', label: 'BI/Rental Income', width: 140 },
+    { key: 'total_tiv', label: 'Total TIV', width: 130, computed: true },
+    { key: 'occupancy', label: 'Occupancy', width: 150 },
+    { key: 'square_footage', label: 'Square Footage', width: 120, highlight: true },
+    { key: 'num_units', label: '# of Units', width: 90, highlight: true },
   ]
 
   // Handle SOV cell click - focus the cell
@@ -536,7 +560,7 @@ export default function LocationDetailPage() {
               </div>
             ) : (
               <>
-                <div className="mb-4">
+                <div className="mb-6">
                   <h2 className="text-xl font-semibold text-gray-900">{location.location_name || location.street_address}</h2>
                   {location.entity_name && (
                     <p className="text-gray-600">{location.entity_name}</p>
@@ -546,6 +570,32 @@ export default function LocationDetailPage() {
                     {[location.city, location.state, location.zip].filter(Boolean).join(', ')}
                   </p>
                 </div>
+
+                {/* Exposure Summary */}
+                <div className="grid grid-cols-3 gap-6 mb-6">
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Total TIV</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {(() => {
+                        const tiv = (Number(location.real_property_value) || 0) + (Number(location.personal_property_value) || 0) + (Number(location.other_value) || 0) + (Number(location.bi_rental_income) || 0)
+                        return tiv ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(tiv) : '$0'
+                      })()}
+                    </p>
+                  </div>
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Units</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {location.num_units ? new Intl.NumberFormat('en-US').format(Number(location.num_units)) : '0'}
+                    </p>
+                  </div>
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Square Footage</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {location.square_footage ? new Intl.NumberFormat('en-US').format(Number(location.square_footage)) : '0'}
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   onClick={() => setIsEditing(true)}
                   className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
@@ -577,8 +627,8 @@ export default function LocationDetailPage() {
                 </tr>
                 <tr>
                   <td className="px-6 py-4 text-sm text-gray-600">Wildfire</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.wildfire_risk)}`}>
-                    {location.wildfire_risk || location.wildfire || '-'}
+                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.wildfire || location.wildfire_risk)}`}>
+                    {location.wildfire || location.wildfire_risk || '-'}
                   </td>
                 </tr>
                 <tr>
@@ -715,20 +765,44 @@ export default function LocationDetailPage() {
                   </thead>
                   <tbody>
                     <tr>
-                      {sovColumns.map((col, colIndex) => (
+                      {sovColumns.map((col, colIndex) => {
+                        const isCurrency = col.key.includes('value') || col.key === 'total_tiv' || col.key === 'bi_rental_income'
+                        const isComputed = col.computed
+                        const cellValue = isComputed
+                          ? (Number(location.real_property_value) || 0) + (Number(location.personal_property_value) || 0) + (Number(location.other_value) || 0) + (Number(location.bi_rental_income) || 0)
+                          : location[col.key]
+
+                        return (
                         <td
                           key={col.key}
                           data-sov-cell={colIndex}
                           onClick={() => handleSovCellClick(colIndex)}
-                          onDoubleClick={() => handleSovCellDoubleClick(colIndex)}
-                          className={`px-0 py-0 text-sm text-gray-900 whitespace-nowrap border-r border-gray-100 last:border-r-0 cursor-cell
+                          onDoubleClick={() => !isComputed && handleSovCellDoubleClick(colIndex)}
+                          className={`px-0 py-0 text-sm whitespace-nowrap border-r border-gray-100 last:border-r-0 ${isComputed ? 'cursor-default' : 'cursor-cell'}
                             ${focusedSovCell === colIndex ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' : 'hover:bg-gray-50'}
+                            ${isComputed ? 'bg-teal-50 font-bold text-teal-800' : 'text-gray-900'}
                           `}
                           style={{ minWidth: col.width, maxWidth: col.width }}
                         >
-                          {editingSovCell === colIndex ? (
+                          {editingSovCell === colIndex && !isComputed ? (
+                            col.type === 'dropdown' ? (
+                              <select
+                                data-sov-input={colIndex}
+                                value={editData[col.key] || ''}
+                                onChange={(e) => { handleInputChange(col.key, e.target.value); handleSave(); setEditingSovCell(null); }}
+                                onBlur={handleSovInputBlur}
+                                onKeyDown={(e) => handleSovInputKeyDown(e, colIndex)}
+                                className="w-full h-full px-3 py-3 border-2 border-blue-500 outline-none bg-white text-gray-900 text-sm"
+                                style={{ minWidth: col.width - 4 }}
+                              >
+                                <option value="">Select...</option>
+                                {col.options.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
                             <input
-                              type={col.key.includes('value') || col.key === 'total_tiv' || col.key === 'num_buildings' || col.key === 'num_units' || col.key === 'square_footage' || col.key === 'orig_year_built' ? 'number' : 'text'}
+                              type={isCurrency || col.key === 'num_buildings' || col.key === 'num_units' || col.key === 'square_footage' || col.key === 'orig_year_built' ? 'number' : 'text'}
                               data-sov-input={colIndex}
                               value={editData[col.key] || ''}
                               onChange={(e) => handleInputChange(col.key, e.target.value)}
@@ -737,22 +811,24 @@ export default function LocationDetailPage() {
                               className="w-full h-full px-4 py-3 border-2 border-blue-500 outline-none bg-white text-gray-900 text-sm"
                               style={{ minWidth: col.width - 4 }}
                             />
+                            )
                           ) : (
                             <div className="px-4 py-3 truncate" title={
-                              col.key.includes('value') || col.key === 'total_tiv'
-                                ? location[col.key] ? `$${Number(location[col.key]).toLocaleString()}` : '-'
-                                : location[col.key] || '-'
+                              isCurrency
+                                ? cellValue ? `$${Number(cellValue).toLocaleString()}` : '-'
+                                : cellValue || '-'
                             }>
-                              {col.key.includes('value') || col.key === 'total_tiv'
-                                ? location[col.key]
-                                  ? `$${Number(location[col.key]).toLocaleString()}`
+                              {isCurrency
+                                ? cellValue
+                                  ? `$${Number(cellValue).toLocaleString()}`
                                   : <span className="text-gray-400">-</span>
-                                : location[col.key] || <span className="text-gray-400">-</span>
+                                : cellValue || <span className="text-gray-400">-</span>
                               }
                             </div>
                           )}
                         </td>
-                      ))}
+                        )
+                      })}
                     </tr>
                   </tbody>
                 </table>

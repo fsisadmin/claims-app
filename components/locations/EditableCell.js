@@ -59,7 +59,9 @@ export default function EditableCell({ value, displayValue, column, rowId, rowIn
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus()
-      inputRef.current.select()
+      if (typeof inputRef.current.select === 'function' && inputRef.current.tagName !== 'SELECT') {
+        inputRef.current.select()
+      }
     }
   }, [isEditing])
 
@@ -167,7 +169,8 @@ export default function EditableCell({ value, displayValue, column, rowId, rowIn
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleCellKeyDown}
-      className={`w-full h-full px-2 py-2 cursor-cell truncate text-gray-900 outline-none
+      className={`w-full h-full px-2 py-2 cursor-cell truncate outline-none
+        ${column.highlight && shownValue ? 'font-bold text-teal-800 bg-teal-50' : 'text-gray-900'}
         ${isSelected ? 'bg-blue-50' : ''}
         ${isFocused ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' : ''}
       `}

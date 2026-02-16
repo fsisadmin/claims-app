@@ -5,13 +5,13 @@ import useSWR from 'swr'
 import { supabase } from '@/lib/supabase'
 
 // Columns needed for locations list view (reduces payload from 100+ to ~20 columns)
-// Uses locations_with_state view to get state_code from the lookup
 const LOCATIONS_LIST_COLUMNS = `
   id, location_name, company, entity_name,
-  street_address, city, state, state_code, zip, county,
-  num_buildings, num_units, square_footage,
-  construction_description, orig_year_built,
-  real_property_value, personal_property_value, total_tiv,
+  street_address, city, state, zip, county,
+  is_prop_within_1000ft_saltwater,
+  num_buildings, num_units, square_footage, num_stories,
+  iso_const, construction_description, orig_year_built, occupancy,
+  real_property_value, personal_property_value, other_value, bi_rental_income, total_tiv,
   tier_1_wind, coastal_flooding_risk, wildfire_risk, earthquake_risk, flood_zone,
   status, date_sold,
   client_id, organization_id, created_at
@@ -23,9 +23,8 @@ async function fetchLocations({ clientId, organizationId }) {
     return []
   }
 
-  // Query from view to get state_code from the lookup
   const { data, error } = await supabase
-    .from('locations_with_state')
+    .from('locations')
     .select(LOCATIONS_LIST_COLUMNS)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
@@ -33,6 +32,10 @@ async function fetchLocations({ clientId, organizationId }) {
     .limit(500) // Prevent unbounded queries
 
   if (error) throw error
+  // Debug: check what data comes back for units/buildings/stories
+  if (data?.length > 0) {
+    console.log('[Locations Debug] First row:', { num_units: data[0].num_units, num_buildings: data[0].num_buildings, num_stories: data[0].num_stories, square_footage: data[0].square_footage })
+  }
   return data || []
 }
 

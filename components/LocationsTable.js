@@ -12,28 +12,28 @@ const ROW_NUM_WIDTH = 48     // w-12
 const LOCATION_NAME_WIDTH = 200
 const STICKY_OFFSET = CHECKBOX_WIDTH + ROW_NUM_WIDTH // 88px
 
+// ISO Construction class to description mapping
+const ISO_CONST_MAP = {
+  '1': 'Frame',
+  '2': 'Joisted Masonry',
+  '3': 'Non-Combustible',
+  '4': 'Masonry Non-Combustible',
+  '5': 'Modified Fire Resistive',
+  '6': 'Fire Resistive',
+}
+
 const COLUMNS = [
-  // Core Location Info
-  { key: 'location_name', label: 'Location Name', width: LOCATION_NAME_WIDTH, type: 'text', frozen: true },
+  // SOV Column Order
+  { key: 'entity_name', label: 'Entity Name', width: 200, type: 'text' },
   { key: 'company', label: 'Company', width: 150, type: 'text' },
+  { key: 'location_name', label: 'Location Name', width: LOCATION_NAME_WIDTH, type: 'text', frozen: true },
   { key: 'street_address', label: 'Street Address', width: 200, type: 'text' },
   { key: 'city', label: 'City', width: 120, type: 'text' },
-  { key: 'state_code', label: 'State', width: 100, type: 'text' }, // Read-only, comes from view lookup
+  { key: 'state', label: 'State', width: 100, type: 'text' },
   { key: 'zip', label: 'Zip', width: 80, type: 'text' },
   { key: 'county', label: 'County', width: 120, type: 'text' },
-  { key: 'full_address', label: 'Full Address', width: 250, type: 'text' },
-  { key: 'latitude', label: 'Latitude', width: 100, type: 'number' },
-  { key: 'longitude', label: 'Longitude', width: 100, type: 'number' },
-  { key: 'region', label: 'Region', width: 100, type: 'text' },
-
-  // Building Info
+  { key: 'is_prop_within_1000ft_saltwater', label: 'Within 1000ft Saltwater', width: 170, type: 'text' },
   { key: 'num_buildings', label: '# of Bldgs', width: 90, type: 'number' },
-  { key: 'num_units', label: '# of Units', width: 90, type: 'number' },
-  { key: 'square_footage', label: 'Square Footage', width: 120, type: 'number', format: 'number' },
-  { key: 'num_stories', label: '# of Stories', width: 90, type: 'number' },
-  { key: 'current_buildings', label: 'Current Buildings', width: 130, type: 'text' },
-
-  // Construction Details
   { key: 'iso_const', label: 'ISO Const', width: 100, type: 'select', options: [
     { value: '1', label: '1' },
     { value: '2', label: '2' },
@@ -52,91 +52,16 @@ const COLUMNS = [
     { value: 'Fire Resistive', label: 'Fire Resistive' },
     { value: 'Combo', label: 'Combo' },
   ]},
+  { key: 'num_stories', label: '# of Stories', width: 90, type: 'number' },
   { key: 'orig_year_built', label: 'Orig Year Built', width: 120, type: 'text' },
-  { key: 'yr_bldg_updated', label: 'Yr Bldg Updated', width: 120, type: 'text' },
-  { key: 'occupancy', label: 'Occupancy', width: 150, type: 'text' },
-  { key: 'percent_sprinklered', label: 'Percent Sprinklered', width: 130, type: 'text' },
-  { key: 'iso_prot_class', label: 'Iso Prot Class', width: 110, type: 'text' },
-  { key: 'sprinklered', label: 'Sprinklered (Y/N)', width: 120, type: 'text' },
-
-  // Financial Values
   { key: 'real_property_value', label: 'Real Property Value', width: 150, type: 'currency', format: 'currency' },
   { key: 'personal_property_value', label: 'Personal Property Value', width: 160, type: 'currency', format: 'currency' },
   { key: 'other_value', label: 'Other Value $', width: 120, type: 'currency', format: 'currency' },
   { key: 'bi_rental_income', label: 'BI/Rental Income', width: 140, type: 'currency', format: 'currency' },
-  { key: 'total_tiv', label: 'Total TIV', width: 130, type: 'currency', format: 'currency' },
-  { key: 'deductible', label: 'Deductible', width: 100, type: 'text' },
-  { key: 'nws_deductible', label: 'NWS Deductible', width: 120, type: 'text' },
-  { key: 'wind_hail_deductible', label: 'Wind/Hail Deductible', width: 140, type: 'text' },
-  { key: 'self_insured_retention', label: 'Self Insured Retention', width: 150, type: 'text' },
-  { key: 'tiv_if_tier_1_wind_yes', label: 'TIV If Tier 1 Wind Yes', width: 150, type: 'currency', format: 'currency' },
-
-  // Risk Assessment
-  { key: 'flood_zone', label: 'Flood Zone', width: 100, type: 'text' },
-  { key: 'is_prop_within_1000ft_saltwater', label: 'Within 1000ft Saltwater', width: 170, type: 'text' },
-  { key: 'tier_1_wind', label: 'Tier 1 Wind', width: 100, type: 'text' },
-  { key: 'coastal_flooding', label: 'Coastal Flooding', width: 130, type: 'text' },
-  { key: 'coastal_flooding_risk', label: 'Coastal Flooding Risk', width: 150, type: 'text' },
-  { key: 'earthquake', label: 'Earthquake', width: 100, type: 'text' },
-  { key: 'earthquake_risk', label: 'Earthquake Risk', width: 130, type: 'text' },
-  { key: 'strong_wind', label: 'Strong Wind', width: 100, type: 'text' },
-  { key: 'tornado', label: 'Tornado', width: 90, type: 'text' },
-  { key: 'tornado_risk', label: 'Tornado Risk', width: 110, type: 'text' },
-  { key: 'wildfire', label: 'Wildfire', width: 90, type: 'text' },
-  { key: 'wildfire_risk', label: 'Wildfire Risk', width: 110, type: 'text' },
-
-  // Entity & Insurance
-  { key: 'entity_name', label: 'Entity Name', width: 200, type: 'text' },
-  { key: 'lenders', label: 'Lenders', width: 200, type: 'text' },
-  { key: 'lender_name_rollup', label: 'Lender Name Rollup', width: 180, type: 'text' },
-  { key: 'policies', label: 'Policies', width: 120, type: 'text' },
-  { key: 'policy', label: 'Policy', width: 120, type: 'text' },
-  { key: 'policy_id', label: 'Policy ID', width: 100, type: 'text' },
-  { key: 'coverage', label: 'Coverage', width: 200, type: 'text' },
-  { key: 'loss_run_summary', label: 'Loss Run Summary', width: 150, type: 'text' },
-  { key: 'policies_25_26', label: '25-26 Policies', width: 120, type: 'text' },
-
-  // Certificates - EPI
-  { key: 'epi', label: 'EPI', width: 80, type: 'text' },
-  { key: 'epi_certificate', label: 'EPI Certificate', width: 120, type: 'text' },
-  { key: 'epi_certificate_recipients', label: 'EPI Certificate Recipients', width: 180, type: 'text' },
-  { key: 'epi_certificate_to_use', label: 'EPI Certificate To Use', width: 160, type: 'text' },
-  { key: 'epi_certificate_to_use_name', label: 'EPI Certificate Name', width: 160, type: 'text' },
-  { key: 'location_epi_additional_remarks', label: 'EPI Additional Remarks', width: 180, type: 'text' },
-  { key: 'is_commercial_coverage_blanket', label: 'Commercial Coverage Blanket', width: 190, type: 'text' },
-
-  // Certificates - COI
-  { key: 'coi_certificate', label: 'COI Certificate', width: 120, type: 'text' },
-  { key: 'coi_certificate_recipients', label: 'COI Certificate Recipients', width: 180, type: 'text' },
-  { key: 'coi_certificate_to_use', label: 'COI Certificate To Use', width: 160, type: 'text' },
-  { key: 'coi_location_specific_additional_remarks', label: 'COI Additional Remarks', width: 180, type: 'text' },
-
-  // Claims Data
-  { key: 'claims', label: 'Claims', width: 100, type: 'text' },
-  { key: 'documents_for_location', label: 'Documents for Location', width: 160, type: 'text' },
-  { key: 'open_claim_rollup', label: 'Open Claim Rollup', width: 130, type: 'number' },
-  { key: 'total_open_claims_rollup', label: 'Total Open Claims Rollup', width: 160, type: 'currency', format: 'currency' },
-  { key: 'total_incurred_five_years_prop', label: 'Total Incurred 5Yr Prop', width: 160, type: 'currency', format: 'currency' },
-  { key: 'total_incurred_five_years_gl', label: 'Total Incurred 5Yr GL', width: 160, type: 'currency', format: 'currency' },
-
-  // Status & Dates
-  { key: 'status', label: 'Status', width: 100, type: 'select', options: [
-    { value: 'Active', label: 'Active' },
-    { value: 'Sold', label: 'Sold' },
-    { value: 'Pending', label: 'Pending' },
-    { value: 'Under Contract', label: 'Under Contract' },
-  ]},
-  { key: 'date_sold', label: 'Date Sold', width: 100, type: 'date' },
-  { key: 'projected_close_date', label: 'Projected Close Date', width: 150, type: 'date' },
-
-  // Acquisition
-  { key: 'acquisitions_clients', label: 'Acquisitions Clients', width: 150, type: 'text' },
-  { key: 'acquisition_address', label: 'Acquisition Address', width: 180, type: 'text' },
-  { key: 'om', label: 'OM', width: 80, type: 'text' },
-
-  // IDs
-  { key: 'source_id', label: 'ID', width: 80, type: 'text' },
-  { key: 'id_location', label: 'ID-Location', width: 120, type: 'text' },
+  { key: 'total_tiv', label: 'Total TIV', width: 130, type: 'currency', format: 'currency', computed: true },
+  { key: 'occupancy', label: 'Occupancy', width: 150, type: 'text' },
+  { key: 'square_footage', label: 'Square Footage', width: 120, type: 'number', format: 'number', highlight: true },
+  { key: 'num_units', label: '# of Units', width: 90, type: 'number', highlight: true },
 ]
 
 
@@ -511,12 +436,25 @@ export default function LocationsTable({ locations = [], clientId, organizationI
     const oldRow = data.find(r => r.id === rowId)
     const oldValue = oldRow ? oldRow[field] : null
 
+    // Find column definition to check for saveKey (e.g., state_code -> state UUID)
+    const colDef = COLUMNS.find(c => c.key === field)
+    let dbField = colDef?.saveKey || field
+    let dbValue = value
+    let localUpdate = { [field]: value }
+
+    // Auto-populate construction_description when iso_const changes
+    let extraDbUpdate = {}
+    if (field === 'iso_const' && ISO_CONST_MAP[value]) {
+      extraDbUpdate.construction_description = ISO_CONST_MAP[value]
+      localUpdate.construction_description = ISO_CONST_MAP[value]
+    }
+
     setSaving(true)
     try {
       // Security: Include organization_id in the update query to prevent cross-org edits
       const { error } = await supabase
         .from('locations')
-        .update({ [field]: value })
+        .update({ [dbField]: dbValue, ...extraDbUpdate })
         .eq('id', rowId)
         .eq('organization_id', organizationId)
 
@@ -527,7 +465,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
 
       // Update local state
       setData(prev => prev.map(row =>
-        row.id === rowId ? { ...row, [field]: value } : row
+        row.id === rowId ? { ...row, ...localUpdate } : row
       ))
     } catch (error) {
       console.error('Error saving:', error)
@@ -1067,6 +1005,21 @@ export default function LocationsTable({ locations = [], clientId, organizationI
                           title={location[col.key] || 'View Location'}
                         >
                           {location[col.key] || <span className="text-gray-400">-</span>}
+                        </div>
+                      ) : col.computed ? (
+                        <div
+                          className={`w-full h-full px-2 py-2 truncate font-bold bg-teal-50 text-teal-800
+                            ${selectedRows.has(location.id) ? 'bg-blue-50' : ''}
+                          `}
+                          title={(() => {
+                            const sum = (Number(location.real_property_value) || 0) + (Number(location.personal_property_value) || 0) + (Number(location.other_value) || 0) + (Number(location.bi_rental_income) || 0)
+                            return sum ? `$${sum.toLocaleString()}` : '-'
+                          })()}
+                        >
+                          {(() => {
+                            const sum = (Number(location.real_property_value) || 0) + (Number(location.personal_property_value) || 0) + (Number(location.other_value) || 0) + (Number(location.bi_rental_income) || 0)
+                            return sum ? `$${sum.toLocaleString()}` : <span className="text-gray-400">-</span>
+                          })()}
                         </div>
                       ) : (
                         <EditableCell

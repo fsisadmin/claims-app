@@ -419,6 +419,40 @@ export default function ClientDetailPage() {
             )}
           </div>
 
+          {/* Exposure Summary */}
+          {activeLocations.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="grid grid-cols-3 gap-6">
+                <div className="bg-teal-50 rounded-xl p-5">
+                  <p className="text-sm font-medium text-teal-600 mb-1">Total TIV</p>
+                  <p className="text-2xl font-bold text-teal-800">
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
+                      activeLocations.reduce((sum, loc) => {
+                        return sum + (Number(loc.real_property_value) || 0) + (Number(loc.personal_property_value) || 0) + (Number(loc.other_value) || 0) + (Number(loc.bi_rental_income) || 0)
+                      }, 0)
+                    )}
+                  </p>
+                </div>
+                <div className="bg-teal-50 rounded-xl p-5">
+                  <p className="text-sm font-medium text-teal-600 mb-1">Total Units</p>
+                  <p className="text-2xl font-bold text-teal-800">
+                    {new Intl.NumberFormat('en-US').format(
+                      activeLocations.reduce((sum, loc) => sum + (Number(loc.num_units) || 0), 0)
+                    )}
+                  </p>
+                </div>
+                <div className="bg-teal-50 rounded-xl p-5">
+                  <p className="text-sm font-medium text-teal-600 mb-1">Total Square Footage</p>
+                  <p className="text-2xl font-bold text-teal-800">
+                    {new Intl.NumberFormat('en-US').format(
+                      activeLocations.reduce((sum, loc) => sum + (Number(loc.square_footage) || 0), 0)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Edit Button */}
           <div className="mt-8 pt-6 border-t border-gray-200">
             <button
