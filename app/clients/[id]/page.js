@@ -130,17 +130,19 @@ export default function ClientDetailPage() {
         .from('claims')
         .select(`
           *,
-          location:locations(id, location_name)
+          location:locations(id, location_name, city, state)
         `)
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('report_date', { ascending: false })
 
       if (error) throw error
-      // Map location_name to property_name for the ClaimsTable
+      // Map location fields to claim for export
       const claimsWithProperty = (data || []).map(claim => ({
         ...claim,
-        property_name: claim.location?.location_name || claim.property_name || null
+        property_name: claim.location?.location_name || claim.property_name || null,
+        location_city: claim.location?.city || null,
+        location_state: claim.location?.state || null,
       }))
       setClaims(claimsWithProperty)
       setClaimsFetched(true)
@@ -584,6 +586,7 @@ export default function ClientDetailPage() {
                   <ClaimsTable
                     claims={claims}
                     clientId={params.id}
+                    clientName={client.name}
                   />
                 )}
               </>

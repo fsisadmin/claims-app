@@ -40,19 +40,50 @@ function StatusBadge({ status }) {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-export default function ClaimsTable({ claims, clientId, onAddClaim }) {
+async function exportLossSummary(claims, coverageType, clientName) {
+  const { saveAs } = await import('file-saver')
+
+  // Filter claims by coverage type
+  const filtered = claims.filter(c => {
+    const cov = (c.coverage || '').toLowerCase()
+    if (coverageType === 'Property') {
+      return cov.includes('property')
+    }
+    return cov.includes('general liability') || cov.includes('liability') || cov === 'gl'
+  })
+
+  // Call server-side API to fill the template (handles shared formulas reliably)
+  const response = await fetch('/api/export-loss-summary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claims: filtered, coverageType, clientName }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json()
+    throw new Error(err.error || 'Export failed')
+  }
+
+  const blob = await response.blob()
+  const safeName = (clientName || 'Client').replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_')
+  const typeName = coverageType === 'Property' ? 'Property_Loss_Summary' : 'Liability_Loss_Summary'
+  saveAs(blob, `${safeName}_${typeName}.xlsx`)
+}
+
+export default function ClaimsTable({ claims, clientId, clientName }) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: 'report_date', direction: 'desc' })
   const [statusFilter, setStatusFilter] = useState('All')
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [exporting, setExporting] = useState('')
 
   // Filter and sort claims
   const filteredClaims = useMemo(() => {
     let result = [...claims]
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       result = result.filter(claim =>
@@ -63,12 +94,10 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
       )
     }
 
-    // Apply status filter
     if (statusFilter !== 'All') {
       result = result.filter(claim => claim.status === statusFilter)
     }
 
-    // Apply sorting
     result.sort((a, b) => {
       let aVal = a[sortConfig.key]
       let bVal = b[sortConfig.key]
@@ -89,6 +118,19 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
     return result
   }, [claims, searchQuery, statusFilter, sortConfig])
 
+  // Count by coverage for export menu
+  const propertyClaims = useMemo(() =>
+    claims.filter(c => (c.coverage || '').toLowerCase().includes('property')),
+    [claims]
+  )
+  const glClaims = useMemo(() =>
+    claims.filter(c => {
+      const cov = (c.coverage || '').toLowerCase()
+      return cov.includes('general liability') || cov.includes('liability') || cov === 'gl'
+    }),
+    [claims]
+  )
+
   // Pagination
   const totalPages = Math.ceil(filteredClaims.length / pageSize)
   const paginatedClaims = useMemo(() => {
@@ -96,21 +138,10 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
     return filteredClaims.slice(start, start + pageSize)
   }, [filteredClaims, currentPage, pageSize])
 
-  // Reset to page 1 when filters change
-  const handleSearchChange = (value) => {
-    setSearchQuery(value)
-    setCurrentPage(1)
-  }
-  const handleStatusChange = (value) => {
-    setStatusFilter(value)
-    setCurrentPage(1)
-  }
-  const handlePageSizeChange = (value) => {
-    setPageSize(Number(value))
-    setCurrentPage(1)
-  }
+  const handleSearchChange = (value) => { setSearchQuery(value); setCurrentPage(1) }
+  const handleStatusChange = (value) => { setStatusFilter(value); setCurrentPage(1) }
+  const handlePageSizeChange = (value) => { setPageSize(Number(value)); setCurrentPage(1) }
 
-  // Handle sort
   const handleSort = (key) => {
     setSortConfig(prev => ({
       key,
@@ -118,7 +149,19 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
     }))
   }
 
-  // Sort indicator
+  const handleExport = async (type) => {
+    setExporting(type)
+    setShowExportMenu(false)
+    try {
+      await exportLossSummary(claims, type, clientName)
+    } catch (err) {
+      console.error('Export failed:', err)
+      alert('Export failed: ' + err.message)
+    } finally {
+      setExporting('')
+    }
+  }
+
   const SortIcon = ({ column }) => {
     if (sortConfig.key !== column) {
       return <span className="text-gray-300 ml-1">↕</span>
@@ -168,6 +211,65 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
               <option key={size} value={size}>Show {size}</option>
             ))}
           </select>
+
+          {/* Export Loss Summary Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={!!exporting}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {exporting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#006B7D]"></div>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export Loss Summary
+                  <svg className={`w-3 h-3 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </>
+              )}
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 w-64">
+                  <div className="p-2">
+                    <button
+                      onClick={() => handleExport('Property')}
+                      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Property Loss Summary</p>
+                        <p className="text-xs text-gray-500">{propertyClaims.length} claim{propertyClaims.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleExport('Liability')}
+                      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Liability Loss Summary</p>
+                        <p className="text-xs text-gray-500">{glClaims.length} claim{glClaims.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Search */}
@@ -196,52 +298,28 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('claim_number')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('claim_number')}>
                   Claim Number <SortIcon column="claim_number" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('claimant')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('claimant')}>
                   Claimant <SortIcon column="claimant" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('coverage')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('coverage')}>
                   Coverage <SortIcon column="coverage" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('property_name')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('property_name')}>
                   Property <SortIcon column="property_name" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('status')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>
                   Status <SortIcon column="status" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('loss_date')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('loss_date')}>
                   Loss Date <SortIcon column="loss_date" />
                 </th>
-                <th
-                  className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('total_incurred')}
-                >
+                <th className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('total_incurred')}>
                   Total Incurred <SortIcon column="total_incurred" />
                 </th>
-                <th
-                  className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('report_date')}
-                >
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('report_date')}>
                   Report Date <SortIcon column="report_date" />
                 </th>
               </tr>
