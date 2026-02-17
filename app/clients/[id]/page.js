@@ -64,6 +64,7 @@ export default function ClientDetailPage() {
   const [policiesFetched, setPoliciesFetched] = useState(false)
   const [activeTab, setActiveTab] = useState('claims')
   const [users, setUsers] = useState([])
+  const [lossAverages, setLossAverages] = useState({ property: null, gl: null })
 
   // Check URL for tab param
   useEffect(() => {
@@ -115,6 +116,31 @@ export default function ClientDetailPage() {
       if (!policiesResult.error) setPoliciesCount(policiesResult.count || 0)
       if (!claimsResult.error) setClaimsCount(claimsResult.count || 0)
       if (!incidentsResult.error) setIncidentsCount(incidentsResult.count || 0)
+
+      // Fetch 5-year loss averages (lightweight query)
+      const fiveYearsAgo = new Date()
+      fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+      const { data: lossData } = await supabase
+        .from('claims')
+        .select('total_incurred, coverage')
+        .eq('organization_id', profile.organization_id)
+        .eq('client_id', params.id)
+        .gte('loss_date', fiveYearsAgo.toISOString().split('T')[0])
+
+      if (lossData) {
+        let propTotal = 0
+        let glTotal = 0
+        lossData.forEach(c => {
+          const cov = (c.coverage || '').toLowerCase()
+          const incurred = Number(c.total_incurred) || 0
+          if (cov.includes('property')) {
+            propTotal += incurred
+          } else if (cov.includes('general liability') || cov.includes('liability') || cov === 'gl') {
+            glTotal += incurred
+          }
+        })
+        setLossAverages({ property: propTotal / 5, gl: glTotal / 5 })
+      }
     } catch (error) {
       console.error('Error fetching counts:', error)
     }
@@ -420,37 +446,58 @@ export default function ClientDetailPage() {
             )}
           </div>
 
-          {/* Exposure Summary */}
-          {activeLocations.length > 0 && (
+          {/* Portfolio Overview */}
+          {(activeLocations.length > 0 || lossAverages.property !== null) && (
             <div className="mt-8 pt-6 border-t border-gray-200">
-              <div className="grid grid-cols-3 gap-6">
-                <div className="bg-teal-50 rounded-xl p-5">
-                  <p className="text-sm font-medium text-teal-600 mb-1">Total TIV</p>
-                  <p className="text-2xl font-bold text-teal-800">
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
-                      activeLocations.reduce((sum, loc) => {
-                        return sum + (Number(loc.real_property_value) || 0) + (Number(loc.personal_property_value) || 0) + (Number(loc.other_value) || 0) + (Number(loc.bi_rental_income) || 0)
-                      }, 0)
-                    )}
-                  </p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Portfolio Overview</h3>
+
+              {activeLocations.length > 0 && (
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Total TIV</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
+                        activeLocations.reduce((sum, loc) => {
+                          return sum + (Number(loc.real_property_value) || 0) + (Number(loc.personal_property_value) || 0) + (Number(loc.other_value) || 0) + (Number(loc.bi_rental_income) || 0)
+                        }, 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Total Units</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {new Intl.NumberFormat('en-US').format(
+                        activeLocations.reduce((sum, loc) => sum + (Number(loc.num_units) || 0), 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-teal-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-teal-600 mb-1">Total Square Footage</p>
+                    <p className="text-2xl font-bold text-teal-800">
+                      {new Intl.NumberFormat('en-US').format(
+                        activeLocations.reduce((sum, loc) => sum + (Number(loc.square_footage) || 0), 0)
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-teal-50 rounded-xl p-5">
-                  <p className="text-sm font-medium text-teal-600 mb-1">Total Units</p>
-                  <p className="text-2xl font-bold text-teal-800">
-                    {new Intl.NumberFormat('en-US').format(
-                      activeLocations.reduce((sum, loc) => sum + (Number(loc.num_units) || 0), 0)
-                    )}
-                  </p>
+              )}
+
+              {lossAverages.property !== null && (
+                <div className={`grid grid-cols-2 gap-6 ${activeLocations.length > 0 ? 'mt-4' : ''}`}>
+                  <div className="bg-blue-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-blue-600 mb-1">5-Year Avg Annual Loss — Property</p>
+                    <p className="text-2xl font-bold text-blue-800">
+                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.property)}
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-5">
+                    <p className="text-sm font-medium text-blue-600 mb-1">5-Year Avg Annual Loss — General Liability</p>
+                    <p className="text-2xl font-bold text-blue-800">
+                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.gl)}
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-teal-50 rounded-xl p-5">
-                  <p className="text-sm font-medium text-teal-600 mb-1">Total Square Footage</p>
-                  <p className="text-2xl font-bold text-teal-800">
-                    {new Intl.NumberFormat('en-US').format(
-                      activeLocations.reduce((sum, loc) => sum + (Number(loc.square_footage) || 0), 0)
-                    )}
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
