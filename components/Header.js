@@ -76,6 +76,14 @@ export default function Header() {
                 </span>
               )}
             </Link>
+            <Link
+              href="/upload"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                pathname === '/upload' ? 'bg-[#006B7D]/10 text-[#006B7D]' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Upload
+            </Link>
             {isAdmin && (
               <>
                 <Link

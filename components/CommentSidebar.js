@@ -335,6 +335,31 @@ export default function CommentSidebar({ entityType, entityId, organizationId, e
     }
   }
 
+  const [editingCommentId, setEditingCommentId] = useState(null)
+  const [editingContent, setEditingContent] = useState('')
+
+  async function handleEditComment(commentId) {
+    if (!editingContent.trim()) return
+
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .update({ content: editingContent.trim() })
+        .eq('id', commentId)
+
+      if (error) throw error
+
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, content: editingContent.trim() } : c
+      ))
+      setEditingCommentId(null)
+      setEditingContent('')
+    } catch (error) {
+      console.error('Error editing comment:', error)
+      alert('Failed to edit comment')
+    }
+  }
+
   async function handleDeleteComment(commentId) {
     if (!confirm('Delete this comment and its attachments?')) return
 
@@ -599,9 +624,46 @@ export default function CommentSidebar({ entityType, entityId, organizationId, e
                               {formatRelativeTime(comment.created_at)}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
-                            {comment.content}
-                          </p>
+                          {editingCommentId === comment.id ? (
+                            <div className="mt-1">
+                              <textarea
+                                value={editingContent}
+                                onChange={(e) => setEditingContent(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm resize-none focus:ring-2 focus:ring-[#006B7D] focus:border-transparent text-gray-900"
+                                rows={3}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') {
+                                    setEditingCommentId(null)
+                                    setEditingContent('')
+                                  }
+                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                    handleEditComment(comment.id)
+                                  }
+                                }}
+                              />
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => handleEditComment(comment.id)}
+                                  disabled={!editingContent.trim()}
+                                  className="px-3 py-1 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded text-xs font-medium transition-colors disabled:opacity-50"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => { setEditingCommentId(null); setEditingContent('') }}
+                                  className="px-3 py-1 text-gray-500 hover:text-gray-700 text-xs font-medium"
+                                >
+                                  Cancel
+                                </button>
+                                <span className="text-xs text-gray-400 ml-auto">Ctrl+Enter to save</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
+                              {comment.content}
+                            </p>
+                          )}
 
                           {/* Comment Attachments */}
                           {commentAttachments[comment.id]?.length > 0 && (
@@ -623,16 +685,27 @@ export default function CommentSidebar({ entityType, entityId, organizationId, e
                             </div>
                           )}
                         </div>
-                        {comment.author_id === user?.id && (
-                          <button
-                            onClick={() => handleDeleteComment(comment.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
-                            title="Delete"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                        {editingCommentId !== comment.id && (
+                          <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={() => { setEditingCommentId(comment.id); setEditingContent(comment.content) }}
+                              className="p-1 text-gray-400 hover:text-[#006B7D] transition-colors"
+                              title="Edit"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

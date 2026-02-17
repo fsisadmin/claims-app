@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 // Format currency
 function formatCurrency(value) {
@@ -39,11 +38,15 @@ function StatusBadge({ status }) {
   )
 }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
 export default function ClaimsTable({ claims, clientId, onAddClaim }) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: 'report_date', direction: 'desc' })
   const [statusFilter, setStatusFilter] = useState('All')
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Filter and sort claims
   const filteredClaims = useMemo(() => {
@@ -86,6 +89,27 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
     return result
   }, [claims, searchQuery, statusFilter, sortConfig])
 
+  // Pagination
+  const totalPages = Math.ceil(filteredClaims.length / pageSize)
+  const paginatedClaims = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredClaims.slice(start, start + pageSize)
+  }, [filteredClaims, currentPage, pageSize])
+
+  // Reset to page 1 when filters change
+  const handleSearchChange = (value) => {
+    setSearchQuery(value)
+    setCurrentPage(1)
+  }
+  const handleStatusChange = (value) => {
+    setStatusFilter(value)
+    setCurrentPage(1)
+  }
+  const handlePageSizeChange = (value) => {
+    setPageSize(Number(value))
+    setCurrentPage(1)
+  }
+
   // Handle sort
   const handleSort = (key) => {
     setSortConfig(prev => ({
@@ -124,7 +148,7 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
           {/* Status Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleStatusChange(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-700"
           >
             <option value="All">All Statuses</option>
@@ -132,6 +156,17 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
             <option value="CLOSED">Closed</option>
             <option value="PENDING">Pending</option>
             <option value="DENIED">Denied</option>
+          </select>
+
+          {/* Page Size */}
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-700"
+          >
+            {PAGE_SIZE_OPTIONS.map(size => (
+              <option key={size} value={size}>Show {size}</option>
+            ))}
           </select>
         </div>
 
@@ -149,7 +184,7 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
             type="text"
             placeholder="Search claims..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
           />
         </div>
@@ -212,7 +247,7 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredClaims.length === 0 ? (
+              {paginatedClaims.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
                     {claims.length === 0 ? (
@@ -229,7 +264,7 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
                   </td>
                 </tr>
               ) : (
-                filteredClaims.map(claim => (
+                paginatedClaims.map(claim => (
                   <tr
                     key={claim.id}
                     className="hover:bg-gray-50 cursor-pointer"
@@ -258,16 +293,39 @@ export default function ClaimsTable({ claims, clientId, onAddClaim }) {
           </table>
         </div>
 
-        {/* Summary Footer */}
+        {/* Footer with pagination */}
         {filteredClaims.length > 0 && (
-          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-between text-sm">
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
             <span className="text-gray-600">
               {filteredClaims.length} claim{filteredClaims.length !== 1 ? 's' : ''}
               {statusFilter !== 'All' && ` (${statusFilter.toLowerCase()})`}
+              {' · '}
+              <span className="font-medium text-gray-900">
+                Total Incurred: {formatCurrency(filteredClaims.reduce((sum, c) => sum + (c.total_incurred || 0), 0))}
+              </span>
             </span>
-            <span className="font-medium text-gray-900">
-              Total Incurred: {formatCurrency(filteredClaims.reduce((sum, c) => sum + (c.total_incurred || 0), 0))}
-            </span>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ‹ Prev
+                </button>
+                <span className="text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next ›
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

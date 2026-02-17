@@ -62,7 +62,7 @@ export default function ClientDetailPage() {
   const [policiesCount, setPoliciesCount] = useState(0)
   const [policiesLoading, setPoliciesLoading] = useState(false)
   const [policiesFetched, setPoliciesFetched] = useState(false)
-  const [activeTab, setActiveTab] = useState('locations')
+  const [activeTab, setActiveTab] = useState('claims')
   const [users, setUsers] = useState([])
 
   // Check URL for tab param
@@ -135,7 +135,6 @@ export default function ClientDetailPage() {
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
         .order('report_date', { ascending: false })
-        .limit(200)
 
       if (error) throw error
       // Map location_name to property_name for the ClaimsTable
@@ -479,43 +478,6 @@ export default function ClientDetailPage() {
           <div className="border-b border-gray-200">
             <nav className="flex">
               <button
-                onClick={() => setActiveTab('locations')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'locations'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Locations
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {activeLocations.length}
-                  </span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('policies')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'policies'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Policies
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {policiesFetched ? policies.length : policiesCount}
-                  </span>
-                </div>
-              </button>
-              <button
                 onClick={() => setActiveTab('claims')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
                   activeTab === 'claims'
@@ -552,6 +514,43 @@ export default function ClientDetailPage() {
                 </div>
               </button>
               <button
+                onClick={() => setActiveTab('policies')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'policies'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Policies
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {policiesFetched ? policies.length : policiesCount}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('locations')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'locations'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Locations
+                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                    {activeLocations.length}
+                  </span>
+                </div>
+              </button>
+              <button
                 onClick={() => setActiveTab('sold-locations')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
                   activeTab === 'sold-locations'
@@ -574,6 +573,56 @@ export default function ClientDetailPage() {
 
           {/* Tab Content */}
           <div className="p-8">
+            {activeTab === 'claims' && (
+              <>
+                {claimsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading claims...</p>
+                  </div>
+                ) : (
+                  <ClaimsTable
+                    claims={claims}
+                    clientId={params.id}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'incidents' && (
+              <>
+                {incidentsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading incidents...</p>
+                  </div>
+                ) : (
+                  <IncidentsTable
+                    incidents={incidents}
+                    clientId={params.id}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'policies' && (
+              <>
+                {policiesLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading policies...</p>
+                  </div>
+                ) : (
+                  <PoliciesTable
+                    policies={policies}
+                    clientId={params.id}
+                    locations={locations}
+                    onAddPolicy={() => router.push(`/clients/${params.id}/policies/add`)}
+                  />
+                )}
+              </>
+            )}
+
             {activeTab === 'locations' && (
               <>
                 {locationsLoading ? (
@@ -605,56 +654,6 @@ export default function ClientDetailPage() {
                     clientId={params.id}
                     organizationId={profile.organization_id}
                     onRefresh={refreshLocations}
-                  />
-                )}
-              </>
-            )}
-
-            {activeTab === 'policies' && (
-              <>
-                {policiesLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                    <p className="mt-2 text-gray-600">Loading policies...</p>
-                  </div>
-                ) : (
-                  <PoliciesTable
-                    policies={policies}
-                    clientId={params.id}
-                    locations={locations}
-                    onAddPolicy={() => router.push(`/clients/${params.id}/policies/add`)}
-                  />
-                )}
-              </>
-            )}
-
-            {activeTab === 'claims' && (
-              <>
-                {claimsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                    <p className="mt-2 text-gray-600">Loading claims...</p>
-                  </div>
-                ) : (
-                  <ClaimsTable
-                    claims={claims}
-                    clientId={params.id}
-                  />
-                )}
-              </>
-            )}
-
-            {activeTab === 'incidents' && (
-              <>
-                {incidentsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                    <p className="mt-2 text-gray-600">Loading incidents...</p>
-                  </div>
-                ) : (
-                  <IncidentsTable
-                    incidents={incidents}
-                    clientId={params.id}
                   />
                 )}
               </>
