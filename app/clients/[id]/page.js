@@ -6,9 +6,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import LocationsTable from '@/components/LocationsTable'
-import PoliciesTable from '@/components/PoliciesTable'
-import ClaimsTable from '@/components/ClaimsTable'
+
 import IncidentsTable from '@/components/IncidentsTable'
+import OrigamiClaimsTable from '@/components/OrigamiClaimsTable'
+import OrigamiPoliciesTable from '@/components/OrigamiPoliciesTable'
 import CommentSidebar from '@/components/CommentSidebar'
 import TasksSection from '@/components/TasksSection'
 import { useClient, useLocations, trackClientView } from '@/hooks'
@@ -50,26 +51,22 @@ export default function ClientDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
-  const [claims, setClaims] = useState([])
-  const [claimsCount, setClaimsCount] = useState(0)
-  const [claimsLoading, setClaimsLoading] = useState(false)
-  const [claimsFetched, setClaimsFetched] = useState(false)
   const [incidents, setIncidents] = useState([])
   const [incidentsCount, setIncidentsCount] = useState(0)
   const [incidentsLoading, setIncidentsLoading] = useState(false)
   const [incidentsFetched, setIncidentsFetched] = useState(false)
-  const [policies, setPolicies] = useState([])
-  const [policiesCount, setPoliciesCount] = useState(0)
-  const [policiesLoading, setPoliciesLoading] = useState(false)
-  const [policiesFetched, setPoliciesFetched] = useState(false)
-  const [activeTab, setActiveTab] = useState('claims')
+  const [activeTab, setActiveTab] = useState('origami-claims')
   const [users, setUsers] = useState([])
-  const [lossAverages, setLossAverages] = useState({ property: null, gl: null })
+  const [lossAverages, setLossAverages] = useState(null)
+  const [origamiClaims, setOrigamiClaims] = useState([])
+  const [origamiPolicies, setOrigamiPolicies] = useState([])
+  const [origamiLoading, setOrigamiLoading] = useState(false)
+  const [origamiFetched, setOrigamiFetched] = useState(false)
 
   // Check URL for tab param
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab && ['locations', 'sold-locations', 'policies', 'claims', 'incidents'].includes(tab)) {
+    if (tab && ['locations', 'sold-locations', 'incidents', 'origami-claims', 'origami-policies'].includes(tab)) {
       setActiveTab(tab)
     }
   }, [searchParams])
@@ -94,18 +91,8 @@ export default function ClientDetailPage() {
     if (!profile?.organization_id || !params.id) return
 
     try {
-      // Run all count queries in parallel for speed
-      const [policiesResult, claimsResult, incidentsResult] = await Promise.all([
-        supabase
-          .from('policies')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', profile.organization_id)
-          .eq('client_id', params.id),
-        supabase
-          .from('claims')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', profile.organization_id)
-          .eq('client_id', params.id),
+      // Run count queries in parallel for speed
+      const [incidentsResult] = await Promise.all([
         supabase
           .from('incidents')
           .select('id', { count: 'exact', head: true })
@@ -113,71 +100,49 @@ export default function ClientDetailPage() {
           .eq('client_id', params.id)
       ])
 
-      if (!policiesResult.error) setPoliciesCount(policiesResult.count || 0)
-      if (!claimsResult.error) setClaimsCount(claimsResult.count || 0)
       if (!incidentsResult.error) setIncidentsCount(incidentsResult.count || 0)
 
       // Fetch 5-year loss averages (lightweight query)
       const fiveYearsAgo = new Date()
       fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+      const fiveYearCutoff = fiveYearsAgo.toISOString().split('T')[0]
       const { data: lossData } = await supabase
         .from('claims')
-        .select('total_incurred, coverage')
+        .select('total_incurred, coverage, loss_date, report_date, location_id')
         .eq('organization_id', profile.organization_id)
         .eq('client_id', params.id)
-        .gte('loss_date', fiveYearsAgo.toISOString().split('T')[0])
 
       if (lossData) {
         let propTotal = 0
         let glTotal = 0
+        const propLocations = new Set()
+        const glLocations = new Set()
         lossData.forEach(c => {
+          const claimDate = c.loss_date || c.report_date
+          if (!claimDate || claimDate < fiveYearCutoff) return
           const cov = (c.coverage || '').toLowerCase()
           const incurred = Number(c.total_incurred) || 0
           if (cov.includes('property')) {
             propTotal += incurred
+            if (c.location_id) propLocations.add(c.location_id)
           } else if (cov.includes('general liability') || cov.includes('liability') || cov === 'gl') {
             glTotal += incurred
+            if (c.location_id) glLocations.add(c.location_id)
           }
         })
-        setLossAverages({ property: propTotal / 5, gl: glTotal / 5 })
+        setLossAverages({
+          propertyAAL: propTotal / 5,
+          glAAL: glTotal / 5,
+          propertyTotal: propTotal,
+          glTotal: glTotal,
+          propertyPerLoc: propLocations.size ? propTotal / propLocations.size : 0,
+          glPerLoc: glLocations.size ? glTotal / glLocations.size : 0,
+        })
       }
     } catch (error) {
       console.error('Error fetching counts:', error)
     }
   }, [profile?.organization_id, params.id])
-
-  // Fetch full claims data (only when claims tab is clicked)
-  const fetchClaims = useCallback(async () => {
-    if (!profile?.organization_id || !params.id || claimsFetched) return
-
-    setClaimsLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('claims')
-        .select(`
-          *,
-          location:locations(id, location_name, city, state)
-        `)
-        .eq('organization_id', profile.organization_id)
-        .eq('client_id', params.id)
-        .order('report_date', { ascending: false })
-
-      if (error) throw error
-      // Map location fields to claim for export
-      const claimsWithProperty = (data || []).map(claim => ({
-        ...claim,
-        property_name: claim.location?.location_name || claim.property_name || null,
-        location_city: claim.location?.city || null,
-        location_state: claim.location?.state || null,
-      }))
-      setClaims(claimsWithProperty)
-      setClaimsFetched(true)
-    } catch (error) {
-      console.error('Error fetching claims:', error)
-    } finally {
-      setClaimsLoading(false)
-    }
-  }, [profile?.organization_id, params.id, claimsFetched])
 
   // Fetch full incidents data (only when incidents tab is clicked)
   const fetchIncidents = useCallback(async () => {
@@ -206,38 +171,35 @@ export default function ClientDetailPage() {
     }
   }, [profile?.organization_id, params.id, incidentsFetched])
 
-  // Fetch full policies data with linked locations (only when policies tab is clicked)
-  const fetchPolicies = useCallback(async () => {
-    if (!profile?.organization_id || !params.id || policiesFetched) return
+  // Fetch origami claims + policies (only when origami tab is clicked)
+  const fetchOrigamiData = useCallback(async () => {
+    if (!profile?.organization_id || !params.id || origamiFetched) return
 
-    setPoliciesLoading(true)
+    setOrigamiLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('policies')
-        .select(`
-          *,
-          policy_locations(
-            id,
-            location_id,
-            location_tiv,
-            location_premium,
-            location:locations(id, location_name, city, state, street_address, num_units, square_footage)
-          )
-        `)
-        .eq('organization_id', profile.organization_id)
-        .eq('client_id', params.id)
-        .order('expiration_date', { ascending: true })
-        .limit(100)
-
-      if (error) throw error
-      setPolicies(data || [])
-      setPoliciesFetched(true)
+      const res = await fetch('/api/origami/client-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appClientId: params.id, organizationId: profile.organization_id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setOrigamiClaims(data.claims || [])
+      setOrigamiPolicies(data.policies || [])
+      setOrigamiFetched(true)
     } catch (error) {
-      console.error('Error fetching policies:', error)
+      console.error('Error fetching origami data:', error)
     } finally {
-      setPoliciesLoading(false)
+      setOrigamiLoading(false)
     }
-  }, [profile?.organization_id, params.id, policiesFetched])
+  }, [profile?.organization_id, params.id, origamiFetched])
+
+  // Fetch origami data on initial load (claims is now the default tab)
+  useEffect(() => {
+    if (user && profile && !origamiFetched) {
+      fetchOrigamiData()
+    }
+  }, [user, profile, origamiFetched, fetchOrigamiData])
 
   // Fetch counts on initial load (fast)
   useEffect(() => {
@@ -261,16 +223,13 @@ export default function ClientDetailPage() {
 
   // Fetch full data only when tab is clicked
   useEffect(() => {
-    if (activeTab === 'policies' && user && profile && !policiesFetched) {
-      fetchPolicies()
-    }
-    if (activeTab === 'claims' && user && profile && !claimsFetched) {
-      fetchClaims()
-    }
     if (activeTab === 'incidents' && user && profile && !incidentsFetched) {
       fetchIncidents()
     }
-  }, [activeTab, user, profile, policiesFetched, claimsFetched, incidentsFetched, fetchPolicies, fetchClaims, fetchIncidents])
+    if ((activeTab === 'origami-claims' || activeTab === 'origami-policies') && user && profile && !origamiFetched) {
+      fetchOrigamiData()
+    }
+  }, [activeTab, user, profile, incidentsFetched, origamiFetched, fetchIncidents, fetchOrigamiData])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -347,11 +306,11 @@ export default function ClientDetailPage() {
 
         {/* Client Card */}
         <div className="bg-white rounded-3xl shadow-md p-8 mb-6">
-          {/* Logo and Name Section */}
-          <div className="flex items-start gap-6 mb-8 pb-8 border-b border-gray-200">
+          {/* Logo and Client Details */}
+          <div className="flex items-start gap-8">
             {/* Logo/Initials */}
             {client.logo_url ? (
-              <div className="w-24 h-24 flex items-center justify-center bg-white border-2 border-gray-200 rounded-2xl overflow-hidden shadow-sm flex-shrink-0">
+              <div className="w-44 h-44 flex items-center justify-center bg-white border-2 border-gray-200 rounded-2xl overflow-hidden shadow-sm flex-shrink-0 p-3">
                 <img
                   src={client.logo_url}
                   alt={`${client.name} logo`}
@@ -359,103 +318,86 @@ export default function ClientDetailPage() {
                 />
               </div>
             ) : (
-              <div className={`${bgColor} w-24 h-24 flex items-center justify-center text-white text-2xl font-bold rounded-2xl shadow-md flex-shrink-0`}>
+              <div className={`${bgColor} w-44 h-44 flex items-center justify-center text-white text-4xl font-bold rounded-2xl shadow-md flex-shrink-0`}>
                 {initials}
               </div>
             )}
 
-            {/* Name and Contact Info */}
-            <div className="flex-1">
-              <h1 className="text-3xl font-semibold text-gray-900 mb-2">{client.name}</h1>
+            {/* Name and Details */}
+            <div className="flex-1 space-y-2 text-sm">
+              <h1 className="text-3xl font-semibold text-gray-900 mb-3">{client.name}</h1>
               {client.account_manager && (
-                <p className="text-gray-600">{client.account_manager}</p>
+                <p className="text-gray-600 -mt-2 mb-3">{client.account_manager}</p>
+              )}
+              {client.street_address && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">Street Address</div>
+                  <div className="text-gray-900">{client.street_address}</div>
+                </div>
+              )}
+              {client.secondary_address && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">Secondary Address</div>
+                  <div className="text-gray-900">{client.secondary_address}</div>
+                </div>
+              )}
+              {(client.city || client.state) && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">City / State</div>
+                  <div className="text-gray-900 flex items-center gap-2">
+                    {client.city && <span>{client.city}</span>}
+                    {client.state && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-[#006B7D] text-white font-semibold rounded-full text-xs">
+                        {client.state}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {client.email && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">Contact Email</div>
+                  <div>
+                    <a href={`mailto:${client.email}`} className="text-[#006B7D] hover:text-[#008BA3] flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      {client.email}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {client.producer_name && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">Contact</div>
+                  <div className="text-gray-900">{client.producer_name}</div>
+                </div>
+              )}
+              {client.ams_code && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">AMS Code</div>
+                  <div className="text-gray-900">{client.ams_code}</div>
+                </div>
+              )}
+              {client.client_number && (
+                <div className="flex">
+                  <div className="w-40 font-medium text-gray-500">Client Number</div>
+                  <div className="text-gray-900">{client.client_number}</div>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Client Details */}
-          <div className="space-y-4">
-            {client.street_address && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">Street Address</div>
-                <div className="flex-1 text-gray-900">{client.street_address}</div>
-              </div>
-            )}
-
-            {client.secondary_address && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">Secondary Address</div>
-                <div className="flex-1 text-gray-900">{client.secondary_address}</div>
-              </div>
-            )}
-
-            {client.city && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">City</div>
-                <div className="flex-1 text-gray-900">{client.city}</div>
-              </div>
-            )}
-
-            {client.state && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">State</div>
-                <div className="flex-1">
-                  <span className="inline-flex items-center px-3 py-1 bg-[#006B7D] text-white font-semibold rounded-full text-xs">
-                    {client.state}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {client.email && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">Contact Email</div>
-                <div className="flex-1">
-                  <a
-                    href={`mailto:${client.email}`}
-                    className="text-[#006B7D] hover:text-[#008BA3] flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    {client.email}
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {client.producer_name && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">Contact</div>
-                <div className="flex-1 text-gray-900">{client.producer_name}</div>
-              </div>
-            )}
-
-            {client.ams_code && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">AMS Code</div>
-                <div className="flex-1 text-gray-900">{client.ams_code}</div>
-              </div>
-            )}
-
-            {client.client_number && (
-              <div className="flex">
-                <div className="w-48 text-sm font-medium text-gray-600">Client Number</div>
-                <div className="flex-1 text-gray-900">{client.client_number}</div>
-              </div>
-            )}
-          </div>
-
           {/* Portfolio Overview */}
-          {(activeLocations.length > 0 || lossAverages.property !== null) && (
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Portfolio Overview</h3>
+          {(activeLocations.length > 0 || lossAverages) && (
+            <div className="mt-8">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#006B7D] mb-4">Portfolio Overview</h3>
 
               {activeLocations.length > 0 && (
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="bg-teal-50 rounded-xl p-5">
-                    <p className="text-sm font-medium text-teal-600 mb-1">Total TIV</p>
-                    <p className="text-2xl font-bold text-teal-800">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
+                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total TIV</p>
+                    <p className="text-2xl font-semibold text-[#006B7D]">
                       {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
                         activeLocations.reduce((sum, loc) => {
                           return sum + (Number(loc.real_property_value) || 0) + (Number(loc.personal_property_value) || 0) + (Number(loc.other_value) || 0) + (Number(loc.bi_rental_income) || 0)
@@ -463,17 +405,17 @@ export default function ClientDetailPage() {
                       )}
                     </p>
                   </div>
-                  <div className="bg-teal-50 rounded-xl p-5">
-                    <p className="text-sm font-medium text-teal-600 mb-1">Total Units</p>
-                    <p className="text-2xl font-bold text-teal-800">
+                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
+                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total Units</p>
+                    <p className="text-2xl font-semibold text-[#006B7D]">
                       {new Intl.NumberFormat('en-US').format(
                         activeLocations.reduce((sum, loc) => sum + (Number(loc.num_units) || 0), 0)
                       )}
                     </p>
                   </div>
-                  <div className="bg-teal-50 rounded-xl p-5">
-                    <p className="text-sm font-medium text-teal-600 mb-1">Total Square Footage</p>
-                    <p className="text-2xl font-bold text-teal-800">
+                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
+                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total Square Footage</p>
+                    <p className="text-2xl font-semibold text-[#006B7D]">
                       {new Intl.NumberFormat('en-US').format(
                         activeLocations.reduce((sum, loc) => sum + (Number(loc.square_footage) || 0), 0)
                       )}
@@ -482,19 +424,59 @@ export default function ClientDetailPage() {
                 </div>
               )}
 
-              {lossAverages.property !== null && (
-                <div className={`grid grid-cols-2 gap-6 ${activeLocations.length > 0 ? 'mt-4' : ''}`}>
-                  <div className="bg-blue-50 rounded-xl p-5">
-                    <p className="text-sm font-medium text-blue-600 mb-1">5-Year Avg Annual Loss — Property</p>
-                    <p className="text-2xl font-bold text-blue-800">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.property)}
-                    </p>
+              {lossAverages && (
+                <div className={`grid grid-cols-2 gap-3 ${activeLocations.length > 0 ? 'mt-3' : ''}`}>
+                  {/* Property Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-5 pt-4 pb-3 bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-white">Property</span>
+                    </div>
+                    <div className="px-5 py-4 space-y-4">
+                      <div>
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Avg Annual Loss</p>
+                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyAAL)}
+                        </p>
+                      </div>
+                      <div className="border-t border-gray-100 pt-3">
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Avg Loss Per Property</p>
+                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyPerLoc)}
+                        </p>
+                      </div>
+                      <div className="border-t border-gray-100 pt-3">
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Total Losses</p>
+                        <p className="text-xl font-semibold text-[#006B7D] mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyTotal)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="bg-blue-50 rounded-xl p-5">
-                    <p className="text-sm font-medium text-blue-600 mb-1">5-Year Avg Annual Loss — General Liability</p>
-                    <p className="text-2xl font-bold text-blue-800">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.gl)}
-                    </p>
+                  {/* General Liability Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-5 pt-4 pb-3 bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-white">General Liability</span>
+                    </div>
+                    <div className="px-5 py-4 space-y-4">
+                      <div>
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Avg Annual Loss</p>
+                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glAAL)}
+                        </p>
+                      </div>
+                      <div className="border-t border-gray-100 pt-3">
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Avg Loss Per Property</p>
+                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glPerLoc)}
+                        </p>
+                      </div>
+                      <div className="border-t border-gray-100 pt-3">
+                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Total Losses</p>
+                        <p className="text-xl font-semibold text-[#006B7D] mt-0.5">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glTotal)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -527,9 +509,9 @@ export default function ClientDetailPage() {
           <div className="border-b border-gray-200">
             <nav className="flex">
               <button
-                onClick={() => setActiveTab('claims')}
+                onClick={() => setActiveTab('origami-claims')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'claims'
+                  activeTab === 'origami-claims'
                     ? 'border-[#006B7D] text-[#006B7D]'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -539,9 +521,11 @@ export default function ClientDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   Claims
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {claimsFetched ? claims.length : claimsCount}
-                  </span>
+                  {origamiFetched && (
+                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                      {origamiClaims.length}
+                    </span>
+                  )}
                 </div>
               </button>
               <button
@@ -559,24 +543,6 @@ export default function ClientDetailPage() {
                   Incidents
                   <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
                     {incidentsFetched ? incidents.length : incidentsCount}
-                  </span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('policies')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'policies'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Policies
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {policiesFetched ? policies.length : policiesCount}
                   </span>
                 </div>
               </button>
@@ -617,28 +583,31 @@ export default function ClientDetailPage() {
                   </span>
                 </div>
               </button>
+              <button
+                onClick={() => setActiveTab('origami-policies')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'origami-policies'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Policies
+                  {origamiFetched && (
+                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                      {origamiPolicies.length}
+                    </span>
+                  )}
+                </div>
+              </button>
             </nav>
           </div>
 
           {/* Tab Content */}
           <div className="p-8">
-            {activeTab === 'claims' && (
-              <>
-                {claimsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                    <p className="mt-2 text-gray-600">Loading claims...</p>
-                  </div>
-                ) : (
-                  <ClaimsTable
-                    claims={claims}
-                    clientId={params.id}
-                    clientName={client.name}
-                  />
-                )}
-              </>
-            )}
-
             {activeTab === 'incidents' && (
               <>
                 {incidentsLoading ? (
@@ -650,24 +619,6 @@ export default function ClientDetailPage() {
                   <IncidentsTable
                     incidents={incidents}
                     clientId={params.id}
-                  />
-                )}
-              </>
-            )}
-
-            {activeTab === 'policies' && (
-              <>
-                {policiesLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                    <p className="mt-2 text-gray-600">Loading policies...</p>
-                  </div>
-                ) : (
-                  <PoliciesTable
-                    policies={policies}
-                    clientId={params.id}
-                    locations={locations}
-                    onAddPolicy={() => router.push(`/clients/${params.id}/policies/add`)}
                   />
                 )}
               </>
@@ -705,6 +656,32 @@ export default function ClientDetailPage() {
                     organizationId={profile.organization_id}
                     onRefresh={refreshLocations}
                   />
+                )}
+              </>
+            )}
+
+            {activeTab === 'origami-claims' && (
+              <>
+                {origamiLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading claims...</p>
+                  </div>
+                ) : (
+                  <OrigamiClaimsTable claims={origamiClaims} />
+                )}
+              </>
+            )}
+
+            {activeTab === 'origami-policies' && (
+              <>
+                {origamiLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                    <p className="mt-2 text-gray-600">Loading policies...</p>
+                  </div>
+                ) : (
+                  <OrigamiPoliciesTable policies={origamiPolicies} />
                 )}
               </>
             )}

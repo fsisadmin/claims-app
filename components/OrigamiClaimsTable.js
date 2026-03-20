@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 
-// Format currency
 function formatCurrency(value) {
   if (value === null || value === undefined) return '$0.00'
   return new Intl.NumberFormat('en-US', {
@@ -13,7 +12,6 @@ function formatCurrency(value) {
   }).format(value)
 }
 
-// Format date
 function formatDate(dateString) {
   if (!dateString) return ''
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -23,84 +21,68 @@ function formatDate(dateString) {
   })
 }
 
-// Status badge component
 function StatusBadge({ status }) {
+  const s = (status || '').toUpperCase()
   const styles = {
     OPEN: 'bg-red-100 text-red-700',
+    O: 'bg-red-100 text-red-700',
     CLOSED: 'bg-green-100 text-green-700',
+    C: 'bg-green-100 text-green-700',
     PENDING: 'bg-amber-100 text-amber-700',
+    R: 'bg-amber-100 text-amber-700',
     DENIED: 'bg-gray-100 text-gray-700',
   }
+  const labels = { O: 'OPEN', C: 'CLOSED', R: 'REOPENED' }
+  const label = labels[s] || s || 'UNKNOWN'
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
-      {status}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${styles[s] || 'bg-gray-100 text-gray-700'}`}>
+      {label}
     </span>
   )
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-async function exportLossSummary(claims, coverageType, clientName) {
-  const { saveAs } = await import('file-saver')
-
-  // Filter claims by coverage type
-  const filtered = claims.filter(c => {
-    const cov = (c.coverage || '').toLowerCase()
-    if (coverageType === 'Property') {
-      return cov.includes('property')
-    }
-    return cov.includes('general liability') || cov.includes('liability') || cov === 'gl'
-  })
-
-  // Call server-side API to fill the template (handles shared formulas reliably)
-  const response = await fetch('/api/export-loss-summary', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ claims: filtered, coverageType, clientName }),
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Export failed')
-  }
-
-  const blob = await response.blob()
-  const safeName = (clientName || 'Client').replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_')
-  const typeName = coverageType === 'Property' ? 'Property_Loss_Summary' : 'Liability_Loss_Summary'
-  saveAs(blob, `${safeName}_${typeName}.xlsx`)
-}
-
-export default function ClaimsTable({ claims, clientId, clientName }) {
+export default function OrigamiClaimsTable({ claims = [] }) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortConfig, setSortConfig] = useState({ key: 'report_date', direction: 'desc' })
+  const [sortConfig, setSortConfig] = useState({ key: 'loss_date', direction: 'desc' })
   const [statusFilter, setStatusFilter] = useState('All')
   const [pageSize, setPageSize] = useState(25)
   const [currentPage, setCurrentPage] = useState(1)
-  const [showExportMenu, setShowExportMenu] = useState(false)
-  const [exporting, setExporting] = useState('')
 
-  // Filter and sort claims
   const filteredClaims = useMemo(() => {
     let result = [...claims]
 
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(claim =>
-        claim.claim_number?.toLowerCase().includes(query) ||
-        claim.claimant?.toLowerCase().includes(query) ||
-        claim.property_name?.toLowerCase().includes(query) ||
-        claim.loss_description?.toLowerCase().includes(query)
-      )
+    if (statusFilter !== 'All') {
+      result = result.filter(c => {
+        const s = (c.status || '').toUpperCase()
+        if (statusFilter === 'OPEN') return s === 'OPEN' || s === 'O'
+        if (statusFilter === 'CLOSED') return s === 'CLOSED' || s === 'C'
+        if (statusFilter === 'PENDING') return s === 'PENDING' || s === 'R'
+        return s === statusFilter
+      })
     }
 
-    if (statusFilter !== 'All') {
-      result = result.filter(claim => claim.status === statusFilter)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter(c =>
+        (c.claim_number || '').toLowerCase().includes(q) ||
+        (c.claimant || '').toLowerCase().includes(q) ||
+        (c.loss_description || '').toLowerCase().includes(q) ||
+        (c.tpa_claim_number || '').toLowerCase().includes(q) ||
+        (c.location_name || '').toLowerCase().includes(q)
+      )
     }
 
     result.sort((a, b) => {
       let aVal = a[sortConfig.key]
       let bVal = b[sortConfig.key]
+
+      if (['total_paid', 'total_reserved', 'total_incurred', 'total_recovery'].includes(sortConfig.key)) {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      }
 
       if (aVal === null || aVal === undefined) return 1
       if (bVal === null || bVal === undefined) return -1
@@ -118,20 +100,6 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
     return result
   }, [claims, searchQuery, statusFilter, sortConfig])
 
-  // Count by coverage for export menu
-  const propertyClaims = useMemo(() =>
-    claims.filter(c => (c.coverage || '').toLowerCase().includes('property')),
-    [claims]
-  )
-  const glClaims = useMemo(() =>
-    claims.filter(c => {
-      const cov = (c.coverage || '').toLowerCase()
-      return cov.includes('general liability') || cov.includes('liability') || cov === 'gl'
-    }),
-    [claims]
-  )
-
-  // Pagination
   const totalPages = Math.ceil(filteredClaims.length / pageSize)
   const paginatedClaims = useMemo(() => {
     const start = (currentPage - 1) * pageSize
@@ -147,19 +115,6 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
     }))
-  }
-
-  const handleExport = async (type) => {
-    setExporting(type)
-    setShowExportMenu(false)
-    try {
-      await exportLossSummary(claims, type, clientName)
-    } catch (err) {
-      console.error('Export failed:', err)
-      alert('Export failed: ' + err.message)
-    } finally {
-      setExporting('')
-    }
   }
 
   const SortIcon = ({ column }) => {
@@ -178,16 +133,6 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 gap-4">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push(`/clients/${clientId}/claims/add`)}
-            className="bg-[#006B7D] hover:bg-[#008BA3] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Claim
-          </button>
-
           {/* Status Filter */}
           <select
             value={statusFilter}
@@ -198,7 +143,6 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
             <option value="OPEN">Open</option>
             <option value="CLOSED">Closed</option>
             <option value="PENDING">Pending</option>
-            <option value="DENIED">Denied</option>
           </select>
 
           {/* Page Size */}
@@ -211,65 +155,6 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
               <option key={size} value={size}>Show {size}</option>
             ))}
           </select>
-
-          {/* Export Loss Summary Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowExportMenu(!showExportMenu)}
-              disabled={!!exporting}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {exporting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#006B7D]"></div>
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Export Loss Summary
-                  <svg className={`w-3 h-3 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </>
-              )}
-            </button>
-            {showExportMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 w-64">
-                  <div className="p-2">
-                    <button
-                      onClick={() => handleExport('Property')}
-                      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Property Loss Summary</p>
-                        <p className="text-xs text-gray-500">{propertyClaims.length} claim{propertyClaims.length !== 1 ? 's' : ''}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleExport('Liability')}
-                      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Liability Loss Summary</p>
-                        <p className="text-xs text-gray-500">{glClaims.length} claim{glClaims.length !== 1 ? 's' : ''}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Search */}
@@ -299,22 +184,25 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('claim_number')}>
-                  Claim Number <SortIcon column="claim_number" />
+                  Claim # <SortIcon column="claim_number" />
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('claimant')}>
                   Claimant <SortIcon column="claimant" />
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('coverage')}>
-                  Coverage <SortIcon column="coverage" />
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('property_name')}>
-                  Property <SortIcon column="property_name" />
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('location_name')}>
+                  Property <SortIcon column="location_name" />
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>
                   Status <SortIcon column="status" />
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('loss_date')}>
                   Loss Date <SortIcon column="loss_date" />
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('total_paid')}>
+                  Total Paid <SortIcon column="total_paid" />
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('total_reserved')}>
+                  Total Reserved <SortIcon column="total_reserved" />
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('total_incurred')}>
                   Total Incurred <SortIcon column="total_incurred" />
@@ -327,14 +215,13 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
             <tbody className="divide-y divide-gray-100">
               {paginatedClaims.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
                     {claims.length === 0 ? (
                       <div>
                         <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <p className="font-medium">No claims for this client</p>
-                        <p className="text-sm mt-1">Click "Add Claim" to create one</p>
                       </div>
                     ) : (
                       <p>No claims match your search</p>
@@ -342,28 +229,33 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
                   </td>
                 </tr>
               ) : (
-                paginatedClaims.map(claim => (
+                paginatedClaims.map(c => (
                   <tr
-                    key={claim.id}
+                    key={c.claim_id}
                     className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => router.push(`/claims/${claim.id}`)}
+                    onClick={() => router.push(`/origami/claims/${c.claim_id}`)}
                   >
                     <td className="px-4 py-3">
                       <span className="text-[#006B7D] hover:underline font-medium">
-                        {claim.claim_number}
+                        {c.claim_number || '—'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-900">{claim.claimant || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{claim.coverage || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{claim.property_name || '-'}</td>
+                    <td className="px-4 py-3 text-gray-900">{c.claimant || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{c.location_name || '—'}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={claim.status} />
+                      <StatusBadge status={c.status} />
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{formatDate(claim.loss_date)}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(c.loss_date)}</td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">
-                      {formatCurrency(claim.total_incurred)}
+                      {formatCurrency(c.total_paid)}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{formatDate(claim.report_date)}</td>
+                    <td className="px-4 py-3 text-right text-gray-900 font-medium">
+                      {formatCurrency(c.total_reserved)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-900 font-medium">
+                      {formatCurrency(c.total_incurred)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(c.report_date)}</td>
                   </tr>
                 ))
               )}
@@ -379,7 +271,7 @@ export default function ClaimsTable({ claims, clientId, clientName }) {
               {statusFilter !== 'All' && ` (${statusFilter.toLowerCase()})`}
               {' · '}
               <span className="font-medium text-gray-900">
-                Total Incurred: {formatCurrency(filteredClaims.reduce((sum, c) => sum + (c.total_incurred || 0), 0))}
+                Total Incurred: {formatCurrency(filteredClaims.reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0))}
               </span>
             </span>
 

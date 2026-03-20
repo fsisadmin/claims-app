@@ -9,6 +9,8 @@ import TasksSection from '@/components/TasksSection'
 import { supabase } from '@/lib/supabase'
 import { US_STATES } from '@/lib/constants'
 import { useLocation, useClient } from '@/hooks'
+import OrigamiClaimsTable from '@/components/OrigamiClaimsTable'
+import OrigamiPoliciesTable from '@/components/OrigamiPoliciesTable'
 
 export default function LocationDetailPage() {
   const router = useRouter()
@@ -27,6 +29,12 @@ export default function LocationDetailPage() {
   const [focusedSovCell, setFocusedSovCell] = useState(null) // Which cell is focused (for navigation)
   const [editingSovCell, setEditingSovCell] = useState(null) // Which cell is being edited
   const [sovUndoStack, setSovUndoStack] = useState([]) // Undo stack for SOV changes
+  const [origamiClaims, setOrigamiClaims] = useState([])
+  const [origamiPolicies, setOrigamiPolicies] = useState([])
+  const [origamiIncidents, setOrigamiIncidents] = useState([])
+  const [origamiLoading, setOrigamiLoading] = useState(false)
+  const [origamiFetched, setOrigamiFetched] = useState(false)
+  const [hasOrigamiData, setHasOrigamiData] = useState(false)
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -102,6 +110,51 @@ export default function LocationDetailPage() {
 
     fetchLinkedPolicies()
   }, [params.locationId, profile?.organization_id])
+
+  // Check if this location has origami data + fetch when tab clicked
+  useEffect(() => {
+    async function checkOrigami() {
+      if (!params.locationId || !profile?.organization_id) return
+      try {
+        const res = await fetch('/api/origami/location-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appLocationId: params.locationId, organizationId: profile.organization_id }),
+        })
+        const data = await res.json()
+        setHasOrigamiData(data.hasOrigamiData)
+      } catch (e) { /* silent */ }
+    }
+    checkOrigami()
+  }, [params.locationId, profile?.organization_id])
+
+  useEffect(() => {
+    async function fetchOrigami() {
+      if (!params.locationId || !profile?.organization_id || origamiFetched) return
+      if (activeTab !== 'origami-claims' && activeTab !== 'origami-policies' && activeTab !== 'origami-incidents') return
+
+      setOrigamiLoading(true)
+      try {
+        const res = await fetch('/api/origami/location-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appLocationId: params.locationId, organizationId: profile.organization_id }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        setOrigamiClaims(data.claims || [])
+        setOrigamiPolicies(data.policies || [])
+        setOrigamiIncidents(data.incidents || [])
+        setHasOrigamiData(data.hasOrigamiData)
+        setOrigamiFetched(true)
+      } catch (error) {
+        console.error('Error fetching origami data:', error)
+      } finally {
+        setOrigamiLoading(false)
+      }
+    }
+    fetchOrigami()
+  }, [activeTab, params.locationId, profile?.organization_id, origamiFetched])
 
   // Fetch users for task assignment dropdown
   useEffect(() => {
@@ -903,6 +956,50 @@ export default function LocationDetailPage() {
                     Policies
                   </div>
                 </button>
+                {hasOrigamiData && (
+                  <>
+                    <button
+                      onClick={() => setActiveTab('origami-claims')}
+                      className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                        activeTab === 'origami-claims'
+                          ? 'border-orange-500 text-orange-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Origami Claims
+                        {origamiFetched && (
+                          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-600">
+                            {origamiClaims.length}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('origami-policies')}
+                      className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                        activeTab === 'origami-policies'
+                          ? 'border-orange-500 text-orange-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        Origami Policies
+                        {origamiFetched && (
+                          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-600">
+                            {origamiPolicies.length}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </>
+                )}
               </nav>
             </div>
 
@@ -1236,6 +1333,34 @@ export default function LocationDetailPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Origami Claims Tab */}
+              {activeTab === 'origami-claims' && (
+                <div>
+                  {origamiLoading ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                      <p className="mt-2 text-gray-600 text-sm">Loading origami claims...</p>
+                    </div>
+                  ) : (
+                    <OrigamiClaimsTable claims={origamiClaims} />
+                  )}
+                </div>
+              )}
+
+              {/* Origami Policies Tab */}
+              {activeTab === 'origami-policies' && (
+                <div>
+                  {origamiLoading ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
+                      <p className="mt-2 text-gray-600 text-sm">Loading origami policies...</p>
+                    </div>
+                  ) : (
+                    <OrigamiPoliciesTable policies={origamiPolicies} />
+                  )}
                 </div>
               )}
             </div>

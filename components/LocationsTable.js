@@ -77,7 +77,7 @@ export default function LocationsTable({ locations = [], clientId, organizationI
   const [sortDirection, setSortDirection] = useState('asc')
   const [focusedCell, setFocusedCell] = useState({ row: null, col: null })
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(25)
   const [undoStack, setUndoStack] = useState([]) // Stack for undo history
   const tableRef = useRef(null)
 
@@ -1042,24 +1042,24 @@ export default function LocationsTable({ locations = [], clientId, organizationI
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* Pagination Controls */}
-      {sortedData.length > pageSize && (
-        <PaginationControls
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          startIndex={startIndex}
-          endIndex={endIndex}
-          totalCount={sortedData.length}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(1)
-          }}
-        />
-      )}
+        {/* Pagination Controls */}
+        {sortedData.length > pageSize && (
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalCount={sortedData.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCurrentPage(1)
+            }}
+          />
+        )}
+      </div>
 
       {/* Paste Modal */}
       {showPasteModal && (
