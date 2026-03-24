@@ -53,8 +53,8 @@ export async function POST(request) {
       return NextResponse.json({ claims: [], policies: [], hasOrigamiData: false })
     }
 
-    // Step 2: Fetch origami claims and policies in parallel
-    const [claims, rawPolicies] = await Promise.all([
+    // Step 2: Fetch origami claims, policies, and incidents in parallel
+    const [claims, rawPolicies, incidents] = await Promise.all([
       fetchAll(
         supabaseAdmin, 'origami_claims',
         'claim_id, claim_number, claimant, loss_date, report_date, status, loss_description, location_id, policy_id, tpa_claim_number, carrier_policy_number, paid1, paid2, paid3, paid4, paid5, paid6, paid7, reserve1, reserve2, reserve3, reserve4, reserve5, reserve6, reserve7, recovery1, recovery2, recovery3, recovery4, recovery5, recovery6, recovery7, client_id, coverage_id',
@@ -66,6 +66,12 @@ export async function POST(request) {
         'policy_id, policy_number, description, effective_date, expiration_date, premium, status, client_id, major_coverage_id',
         { client_id_in: origamiClientIds },
         'expiration_date'
+      ),
+      fetchAll(
+        supabaseAdmin, 'origami_incidents',
+        'incident_id, incident_number, status, claimant, loss_date, report_date, loss_description, event_description, location_id, incident_type_id, accident_street1, accident_city, accident_state_id, accident_postal_code, claimant_home_phone, occupation, department_name, supervisor, osha_recordable, entry_date, client_id, cause_id, body_part_id, nature_id, major_injury',
+        { client_id_in: origamiClientIds },
+        'loss_date'
       ),
     ])
 
@@ -183,11 +189,20 @@ export async function POST(request) {
       notes: notesByClaimId[c.claim_id] || [],
     }))
 
-    console.log(`[Client Data] ${notes.length} notes for ${claimIds.length} claims`)
+    console.log(`[Client Data] ${notes.length} notes for ${claimIds.length} claims, ${incidents.length} incidents`)
+
+    // Enrich incidents with location names
+    const incidentsEnriched = incidents.map(inc => ({
+      ...inc,
+      location_name: origamiLocationLookup[inc.location_id]?.description || null,
+      location_city: origamiLocationLookup[inc.location_id]?.city || null,
+      location_state: origamiLocationLookup[inc.location_id]?.state_id != null ? String(origamiLocationLookup[inc.location_id].state_id) : null,
+    }))
 
     return NextResponse.json({
       claims: claimsWithNotes,
       policies,
+      incidents: incidentsEnriched,
       hasOrigamiData: true,
     })
   } catch (error) {

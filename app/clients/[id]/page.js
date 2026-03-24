@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import LocationsTable from '@/components/LocationsTable'
 
-import IncidentsTable from '@/components/IncidentsTable'
+import OrigamiIncidentsTable from '@/components/OrigamiIncidentsTable'
 import OrigamiClaimsTable from '@/components/OrigamiClaimsTable'
 import OrigamiPoliciesTable from '@/components/OrigamiPoliciesTable'
 import CommentSidebar from '@/components/CommentSidebar'
@@ -51,15 +51,12 @@ export default function ClientDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const { user, profile, loading: authLoading } = useAuth()
-  const [incidents, setIncidents] = useState([])
-  const [incidentsCount, setIncidentsCount] = useState(0)
-  const [incidentsLoading, setIncidentsLoading] = useState(false)
-  const [incidentsFetched, setIncidentsFetched] = useState(false)
   const [activeTab, setActiveTab] = useState('origami-claims')
   const [users, setUsers] = useState([])
   const [lossAverages, setLossAverages] = useState(null)
   const [origamiClaims, setOrigamiClaims] = useState([])
   const [origamiPolicies, setOrigamiPolicies] = useState([])
+  const [origamiIncidents, setOrigamiIncidents] = useState([])
   const [origamiLoading, setOrigamiLoading] = useState(false)
   const [origamiFetched, setOrigamiFetched] = useState(false)
 
@@ -91,17 +88,6 @@ export default function ClientDetailPage() {
     if (!profile?.organization_id || !params.id) return
 
     try {
-      // Run count queries in parallel for speed
-      const [incidentsResult] = await Promise.all([
-        supabase
-          .from('incidents')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', profile.organization_id)
-          .eq('client_id', params.id)
-      ])
-
-      if (!incidentsResult.error) setIncidentsCount(incidentsResult.count || 0)
-
       // Fetch 5-year loss averages (lightweight query)
       const fiveYearsAgo = new Date()
       fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
@@ -144,34 +130,7 @@ export default function ClientDetailPage() {
     }
   }, [profile?.organization_id, params.id])
 
-  // Fetch full incidents data (only when incidents tab is clicked)
-  const fetchIncidents = useCallback(async () => {
-    if (!profile?.organization_id || !params.id || incidentsFetched) return
-
-    setIncidentsLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('incidents')
-        .select(`
-          *,
-          locations(location_name, company)
-        `)
-        .eq('organization_id', profile.organization_id)
-        .eq('client_id', params.id)
-        .order('incident_number', { ascending: false })
-        .limit(200)
-
-      if (error) throw error
-      setIncidents(data || [])
-      setIncidentsFetched(true)
-    } catch (error) {
-      console.error('Error fetching incidents:', error)
-    } finally {
-      setIncidentsLoading(false)
-    }
-  }, [profile?.organization_id, params.id, incidentsFetched])
-
-  // Fetch origami claims + policies (only when origami tab is clicked)
+  // Fetch origami claims, policies, and incidents
   const fetchOrigamiData = useCallback(async () => {
     if (!profile?.organization_id || !params.id || origamiFetched) return
 
@@ -186,6 +145,7 @@ export default function ClientDetailPage() {
       if (!res.ok) throw new Error(data.error)
       setOrigamiClaims(data.claims || [])
       setOrigamiPolicies(data.policies || [])
+      setOrigamiIncidents(data.incidents || [])
       setOrigamiFetched(true)
     } catch (error) {
       console.error('Error fetching origami data:', error)
@@ -221,15 +181,12 @@ export default function ClientDetailPage() {
     fetchUsers()
   }, [profile?.organization_id])
 
-  // Fetch full data only when tab is clicked
+  // Fetch origami data when tab needs it
   useEffect(() => {
-    if (activeTab === 'incidents' && user && profile && !incidentsFetched) {
-      fetchIncidents()
-    }
-    if ((activeTab === 'origami-claims' || activeTab === 'origami-policies') && user && profile && !origamiFetched) {
+    if ((activeTab === 'origami-claims' || activeTab === 'origami-policies' || activeTab === 'incidents') && user && profile && !origamiFetched) {
       fetchOrigamiData()
     }
-  }, [activeTab, user, profile, incidentsFetched, origamiFetched, fetchIncidents, fetchOrigamiData])
+  }, [activeTab, user, profile, origamiFetched, fetchOrigamiData])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -541,9 +498,11 @@ export default function ClientDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                   Incidents
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {incidentsFetched ? incidents.length : incidentsCount}
-                  </span>
+                  {origamiFetched && (
+                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                      {origamiIncidents.length}
+                    </span>
+                  )}
                 </div>
               </button>
               <button
@@ -610,16 +569,13 @@ export default function ClientDetailPage() {
           <div className="p-8">
             {activeTab === 'incidents' && (
               <>
-                {incidentsLoading ? (
+                {origamiLoading ? (
                   <div className="text-center py-8">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
                     <p className="mt-2 text-gray-600">Loading incidents...</p>
                   </div>
                 ) : (
-                  <IncidentsTable
-                    incidents={incidents}
-                    clientId={params.id}
-                  />
+                  <OrigamiIncidentsTable incidents={origamiIncidents} />
                 )}
               </>
             )}
