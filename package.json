@@ -22,8 +22,6 @@
     "xlsx-populate": "^1.21.0"
   },
   "devDependencies": {
-    "msnodesqlv8": "^5.1.5",
-    "mssql": "^12.2.0",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",

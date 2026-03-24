@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -27,6 +28,7 @@ function StatusBadge({ status }) {
 }
 
 export default function OrigamiIncidentsTable({ incidents }) {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: 'loss_date', direction: 'desc' })
   const [statusFilter, setStatusFilter] = useState('All')
@@ -191,7 +193,8 @@ export default function OrigamiIncidentsTable({ incidents }) {
                 filteredIncidents.map(inc => (
                   <tr
                     key={inc.incident_id}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => router.push(`/origami/incidents/${inc.incident_id}`)}
                   >
                     <td className="px-4 py-3">
                       <span className="text-[#006B7D] font-medium">

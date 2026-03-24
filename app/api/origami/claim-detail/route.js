@@ -50,8 +50,8 @@ export async function POST(request) {
 
     if (claimError) throw claimError
 
-    // Fetch notes, location, and policy in parallel
-    const [rawNotes, location, policy] = await Promise.all([
+    // Fetch notes, location, location map, and policy in parallel
+    const [rawNotes, location, locationMap, policy] = await Promise.all([
       fetchAll(
         supabaseAdmin, 'origami_notes',
         'note_id, parent_id, body, author_name, entry_date, subject, entry_user_id',
@@ -64,6 +64,13 @@ export async function POST(request) {
         .select('location_id, description, display_code, street1, city, state_id, postal_code')
         .eq('location_id', claim.location_id)
         .single()
+        .then(r => r.data) : Promise.resolve(null),
+      claim.location_id ? supabaseAdmin
+        .from('origami_location_map')
+        .select('app_location_id')
+        .eq('origami_location_id', claim.location_id)
+        .eq('entity_type', 'location')
+        .maybeSingle()
         .then(r => r.data) : Promise.resolve(null),
       claim.policy_id ? supabaseAdmin
         .from('origami_policies')
@@ -141,6 +148,18 @@ export async function POST(request) {
     const totalRecovery = [claim.recovery1, claim.recovery2, claim.recovery3, claim.recovery4, claim.recovery5, claim.recovery6, claim.recovery7]
       .reduce((sum, v) => sum + (Number(v) || 0), 0)
 
+    // Find the app client ID for this origami client
+    let appClientId = null
+    if (claim.client_id) {
+      const { data: clientMap } = await supabaseAdmin
+        .from('origami_client_map')
+        .select('app_client_id')
+        .eq('origami_client_id', claim.client_id)
+        .eq('entity_type', 'client')
+        .maybeSingle()
+      appClientId = clientMap?.app_client_id || null
+    }
+
     return NextResponse.json({
       claim: {
         ...claim,
@@ -151,7 +170,11 @@ export async function POST(request) {
       },
       notes,
       files: standaloneFiles,
-      location,
+      location: location ? {
+        ...location,
+        app_location_id: locationMap?.app_location_id || null,
+        app_client_id: appClientId,
+      } : null,
       policy,
     })
   } catch (error) {
