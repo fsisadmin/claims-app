@@ -2,6 +2,96 @@
 
 import { useState, useRef, useEffect } from 'react'
 
+function FormattedMessage({ content }) {
+  // Simple markdown-like rendering
+  const lines = content.split('\n')
+  const elements = []
+  let inList = false
+  let listItems = []
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={`list-${elements.length}`} className="space-y-1 my-1.5 ml-1">
+          {listItems.map((item, i) => (
+            <li key={i} className="flex gap-1.5 text-sm">
+              <span className="text-[#006B7D] mt-0.5 flex-shrink-0">•</span>
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ul>
+      )
+      listItems = []
+    }
+    inList = false
+  }
+
+  const renderInline = (text) => {
+    // Bold: **text**
+    const parts = text.split(/(\*\*[^*]+\*\*)/g)
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
+      }
+      return <span key={i}>{part}</span>
+    })
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Headers: #, ##, ###
+    if (line.startsWith('### ')) {
+      flushList()
+      elements.push(
+        <h4 key={i} className="text-xs font-bold text-[#006B7D] mt-2.5 mb-1 uppercase tracking-wide">
+          {line.slice(4)}
+        </h4>
+      )
+    } else if (line.startsWith('## ')) {
+      flushList()
+      elements.push(
+        <h3 key={i} className="text-sm font-bold text-gray-900 mt-2.5 mb-1">
+          {line.slice(3)}
+        </h3>
+      )
+    } else if (line.startsWith('# ')) {
+      flushList()
+      elements.push(
+        <h2 key={i} className="text-sm font-bold text-[#006B7D] mt-2 mb-1 border-b border-gray-200 pb-1">
+          {line.slice(2)}
+        </h2>
+      )
+    } else if (/^[-•*]\s/.test(line)) {
+      // Bullet point
+      inList = true
+      listItems.push(line.replace(/^[-•*]\s+/, ''))
+    } else if (/^\d+\.\s/.test(line)) {
+      // Numbered list
+      flushList()
+      elements.push(
+        <div key={i} className="flex gap-1.5 text-sm my-0.5 ml-1">
+          <span className="text-[#006B7D] font-medium flex-shrink-0">{line.match(/^\d+/)[0]}.</span>
+          <span>{renderInline(line.replace(/^\d+\.\s+/, ''))}</span>
+        </div>
+      )
+    } else if (line.trim() === '') {
+      flushList()
+      elements.push(<div key={i} className="h-1.5" />)
+    } else {
+      flushList()
+      elements.push(
+        <p key={i} className="text-sm leading-relaxed">
+          {renderInline(line)}
+        </p>
+      )
+    }
+  }
+  flushList()
+
+  return <div className="space-y-0.5">{elements}</div>
+}
+
 export default function ClaimInsightsChat({ claimId, claimNumber }) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([])
@@ -164,7 +254,11 @@ export default function ClaimInsightsChat({ claimId, claimNumber }) {
                               : 'bg-gray-100 text-gray-800 rounded-bl-md'
                         }`}
                       >
-                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                        {msg.role === 'assistant' ? (
+                          <FormattedMessage content={msg.content} />
+                        ) : (
+                          <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -196,7 +290,7 @@ export default function ClaimInsightsChat({ claimId, claimNumber }) {
                   onKeyDown={handleKeyDown}
                   placeholder="Ask about this claim..."
                   rows={1}
-                  className="flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D]/30 focus:border-[#006B7D] max-h-24"
+                  className="flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006B7D]/30 focus:border-[#006B7D] max-h-24 bg-white"
                   disabled={loading}
                 />
                 <button

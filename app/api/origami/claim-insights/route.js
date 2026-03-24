@@ -28,6 +28,13 @@ async function fetchAll(supabase, table, select, filters = {}) {
   return allRows
 }
 
+function formatFileSize(bytes) {
+  if (!bytes) return 'unknown'
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1048576) return `${Math.round(bytes / 1024)}KB`
+  return `${(bytes / 1048576).toFixed(1)}MB`
+}
+
 function formatClaimContext(claim, notes, files, location, policy) {
   let context = '## CLAIM DATA\n'
 
@@ -94,31 +101,41 @@ function formatClaimContext(claim, notes, files, location, policy) {
     context += `Effective: ${policy.effective_date || 'N/A'} to ${policy.expiration_date || 'N/A'}\n`
   }
 
-  // Notes
+  // Notes — cap total context to ~8K tokens worth of notes
   if (notes.length > 0) {
     context += `\n## NOTES & DIARY ENTRIES (${notes.length} total)\n`
-    // Include all notes but truncate very long ones
+    const MAX_NOTES_CHARS = 30000 // ~8K tokens
+    let notesChars = 0
+
+    // Show most recent notes first (already sorted desc by entry_date)
     for (const note of notes) {
+      if (notesChars > MAX_NOTES_CHARS) {
+        context += `\n... (${notes.length - notes.indexOf(note)} older notes omitted for brevity)\n`
+        break
+      }
       const author = note.user_name || note.author_name || 'Unknown'
       const date = note.entry_date ? new Date(note.entry_date).toLocaleDateString() : 'N/A'
-      context += `\n--- Note by ${author} on ${date} ---\n`
-      if (note.subject) context += `Subject: ${note.subject}\n`
-      const body = (note.body || '').substring(0, 2000)
-      context += `${body}\n`
-      if (note.files && note.files.length > 0) {
-        context += `Attachments: ${note.files.map(f => f.file_name).join(', ')}\n`
-      }
+      const subject = note.subject ? ` | ${note.subject}` : ''
+      // Strip email headers/signatures and excessive whitespace
+      let body = (note.body || '')
+        .replace(/^(From|To|Cc|Sent|Date|Subject):.*$/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+        .substring(0, 500)
+      const attachments = note.files?.length ? ` [Files: ${note.files.map(f => f.file_name).join(', ')}]` : ''
+      const entry = `[${date}] ${author}${subject}: ${body}${attachments}\n`
+      context += entry
+      notesChars += entry.length
     }
   }
 
-  // Files
+  // Files — just list names
   if (files.length > 0) {
-    context += `\n## ATTACHED FILES (${files.length} standalone files)\n`
-    for (const f of files) {
-      context += `- ${f.file_name} (${f.mime_type}, ${f.file_size ? Math.round(f.file_size / 1024) + 'KB' : 'unknown size'})`
-      if (f.description) context += ` — ${f.description}`
-      context += '\n'
+    context += `\n## ATTACHED FILES (${files.length})\n`
+    for (const f of files.slice(0, 50)) {
+      context += `- ${f.file_name} (${formatFileSize(f.file_size)})\n`
     }
+    if (files.length > 50) context += `... and ${files.length - 50} more files\n`
   }
 
   return context
@@ -231,7 +248,7 @@ export async function POST(request) {
     messages.push({ role: 'user', content: question })
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
       system: `You are a claims analyst assistant for Franklin Street Insurance. You have access to detailed claim data including notes, financial information, files, and history.
 

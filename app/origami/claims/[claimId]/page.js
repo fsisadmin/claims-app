@@ -57,15 +57,32 @@ function StatusBadge({ status }) {
   )
 }
 
-function FinancialRow({ label, paid, reserved, recovery }) {
+function EditableCell({ value, editing, field, onChange }) {
+  if (!editing) {
+    return <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(value)}</td>
+  }
+  return (
+    <td className="py-1 px-2">
+      <input
+        type="number"
+        step="0.01"
+        value={value || 0}
+        onChange={(e) => onChange(field, e.target.value)}
+        className="w-full text-right text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#006B7D] focus:border-[#006B7D] bg-white text-gray-900"
+      />
+    </td>
+  )
+}
+
+function FinancialRow({ label, paid, reserved, recovery, editing, catIndex, onChange }) {
   const outstanding = (Number(reserved) || 0) - (Number(paid) || 0)
   const incurred = (Number(paid) || 0) + (Number(reserved) || 0) - (Number(recovery) || 0)
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
       <td className="py-2 px-4 text-sm text-gray-700">{label}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(reserved)}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(paid)}</td>
-      <td className="py-2 px-4 text-sm text-right text-gray-700">{formatCurrency(recovery)}</td>
+      <EditableCell value={reserved} editing={editing} field={`reserve${catIndex}`} onChange={onChange} />
+      <EditableCell value={paid} editing={editing} field={`paid${catIndex}`} onChange={onChange} />
+      <EditableCell value={recovery} editing={editing} field={`recovery${catIndex}`} onChange={onChange} />
       <td className="py-2 px-4 text-sm text-right text-gray-700 bg-gray-50">{formatCurrency(outstanding)}</td>
       <td className="py-2 px-4 text-sm text-right text-gray-700 font-medium bg-gray-50">{formatCurrency(incurred)}</td>
     </tr>
@@ -85,6 +102,20 @@ export default function OrigamiClaimDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showFullDetails, setShowFullDetails] = useState(false)
+  const [editingFinancials, setEditingFinancials] = useState(false)
+  const [editValues, setEditValues] = useState({})
+  const [saving, setSaving] = useState(false)
+  const DEFAULT_CATEGORIES = {
+    1: 'Bodily Injury',
+    2: 'Expense',
+    3: 'Property Damage',
+    4: 'Legal',
+    5: 'Other',
+    6: 'Recovery',
+    7: 'Subrogation',
+  }
+  const [categoryLabels, setCategoryLabels] = useState(DEFAULT_CATEGORIES)
+  const [editLabels, setEditLabels] = useState({})
 
   const fetchClaimDetail = useCallback(async () => {
     try {
@@ -101,6 +132,19 @@ export default function OrigamiClaimDetailPage() {
       setFiles(data.files || [])
       setLocation(data.location)
       setPolicy(data.policy)
+
+      // Fetch custom category labels (merge with defaults)
+      try {
+        const catRes = await fetch('/api/origami/financial-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get', clientId: data.claim.client_id }),
+        })
+        const catData = await catRes.json()
+        if (catData.labels && Object.keys(catData.labels).length > 0) {
+          setCategoryLabels(prev => ({ ...prev, ...catData.labels }))
+        }
+      } catch (e) { /* use defaults */ }
     } catch (err) {
       console.error('Error fetching origami claim:', err)
       setError(err.message)
@@ -108,6 +152,61 @@ export default function OrigamiClaimDetailPage() {
       setLoading(false)
     }
   }, [params.claimId])
+
+  const startEditFinancials = () => {
+    const vals = {}
+    for (let i = 1; i <= 7; i++) {
+      vals[`paid${i}`] = Number(claim[`paid${i}`]) || 0
+      vals[`reserve${i}`] = Number(claim[`reserve${i}`]) || 0
+      vals[`recovery${i}`] = Number(claim[`recovery${i}`]) || 0
+    }
+    setEditValues(vals)
+    setEditLabels({ ...categoryLabels })
+    setEditingFinancials(true)
+  }
+
+  const handleLabelChange = (index, value) => {
+    setEditLabels(prev => ({ ...prev, [index]: value }))
+  }
+
+  const handleFinancialChange = (field, value) => {
+    setEditValues(prev => ({ ...prev, [field]: value === '' ? 0 : Number(value) }))
+  }
+
+  const saveFinancials = async () => {
+    setSaving(true)
+    try {
+      // Save financials
+      const res = await fetch('/api/origami/update-claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claimId: claim.claim_id, financials: editValues }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      // Save category labels
+      const categories = Object.entries(editLabels)
+        .filter(([_, label]) => label && label.trim())
+        .map(([index, label]) => ({ index: Number(index), label: label.trim() }))
+      if (categories.length > 0) {
+        await fetch('/api/origami/financial-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', clientId: claim.client_id, categories }),
+        })
+      }
+
+      setCategoryLabels({ ...editLabels })
+      setEditingFinancials(false)
+      fetchClaimDetail() // reload
+    } catch (err) {
+      console.error('Save error:', err)
+      alert('Failed to save: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/login')
@@ -280,7 +379,37 @@ export default function OrigamiClaimDetailPage() {
 
         {/* Current Financials Card */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-[#006B7D] mb-4">Current Financials</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-[#006B7D]">Current Financials</h2>
+            {editingFinancials ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingFinancials(false)}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveFinancials}
+                  disabled={saving}
+                  className="px-3 py-1.5 text-sm text-white bg-[#006B7D] hover:bg-[#008BA3] rounded-lg disabled:opacity-50 flex items-center gap-1"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={startEditFinancials}
+                className="px-3 py-1.5 text-sm text-[#006B7D] hover:bg-[#006B7D]/5 border border-[#006B7D]/30 rounded-lg flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Edit
+              </button>
+            )}
+          </div>
 
           <table className="w-full">
             <thead>
@@ -295,17 +424,22 @@ export default function OrigamiClaimDetailPage() {
             </thead>
             <tbody>
               {[1, 2, 3, 4, 5, 6, 7].map(i => {
-                const paid = Number(claim[`paid${i}`]) || 0
-                const reserved = Number(claim[`reserve${i}`]) || 0
-                const recovery = Number(claim[`recovery${i}`]) || 0
-                if (paid === 0 && reserved === 0 && recovery === 0) return null
+                const paid = editingFinancials ? (editValues[`paid${i}`] || 0) : (Number(claim[`paid${i}`]) || 0)
+                const reserved = editingFinancials ? (editValues[`reserve${i}`] || 0) : (Number(claim[`reserve${i}`]) || 0)
+                const recovery = editingFinancials ? (editValues[`recovery${i}`] || 0) : (Number(claim[`recovery${i}`]) || 0)
+                // In view mode, hide empty rows unless they have a label. In edit mode, show all.
+                if (!editingFinancials && paid === 0 && reserved === 0 && recovery === 0 && !categoryLabels[i]) return null
+                const label = categoryLabels[i] || `Category ${i}`
                 return (
                   <FinancialRow
                     key={i}
-                    label={`Category ${i}`}
+                    catIndex={i}
+                    label={label}
                     paid={paid}
                     reserved={reserved}
                     recovery={recovery}
+                    editing={editingFinancials}
+                    onChange={handleFinancialChange}
                   />
                 )
               })}
@@ -313,6 +447,13 @@ export default function OrigamiClaimDetailPage() {
           </table>
 
           {/* Totals Row */}
+          {(() => {
+            const src = editingFinancials ? editValues : claim
+            const tPaid = [1,2,3,4,5,6,7].reduce((s, i) => s + (Number(editingFinancials ? src[`paid${i}`] : claim[`paid${i}`]) || 0), 0)
+            const tReserved = [1,2,3,4,5,6,7].reduce((s, i) => s + (Number(editingFinancials ? src[`reserve${i}`] : claim[`reserve${i}`]) || 0), 0)
+            const tRecovery = [1,2,3,4,5,6,7].reduce((s, i) => s + (Number(editingFinancials ? src[`recovery${i}`] : claim[`recovery${i}`]) || 0), 0)
+            const tIncurred = tPaid + tReserved - tRecovery
+            return (
           <div className="mt-4 pt-4 border-t-2 border-gray-300">
             <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
               <div className="flex items-center gap-2">
@@ -321,23 +462,25 @@ export default function OrigamiClaimDetailPage() {
               <div className="flex items-center text-sm font-bold text-gray-900 gap-1">
                 <span className="w-28 text-right px-4">
                   <span className="text-xs text-gray-500 block">Reserved</span>
-                  {formatCurrency(claim.total_reserved)}
+                  {formatCurrency(tReserved)}
                 </span>
                 <span className="w-28 text-right px-4">
                   <span className="text-xs text-gray-500 block">Paid</span>
-                  {formatCurrency(claim.total_paid)}
+                  {formatCurrency(tPaid)}
                 </span>
                 <span className="w-28 text-right px-4">
                   <span className="text-xs text-gray-500 block">Recovery</span>
-                  {formatCurrency(claim.total_recovery)}
+                  {formatCurrency(tRecovery)}
                 </span>
                 <span className="w-32 text-right px-4 bg-[#006B7D]/10 py-2 rounded text-[#006B7D]">
                   <span className="text-xs block">Incurred</span>
-                  {formatCurrency(claim.total_incurred)}
+                  {formatCurrency(tIncurred)}
                 </span>
               </div>
             </div>
           </div>
+            )
+          })()}
         </div>
       </main>
     </div>
