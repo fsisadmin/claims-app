@@ -30,6 +30,7 @@ export default function OrigamiLocationDetailPage() {
   const [claims, setClaims] = useState([])
   const [policies, setPolicies] = useState([])
   const [locationValues, setLocationValues] = useState([])
+  const [syncInfo, setSyncInfo] = useState({ isSynced: false, appClientId: null, appLocationId: null })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('details')
@@ -82,6 +83,11 @@ export default function OrigamiLocationDetailPage() {
       setClaims(data.claims || [])
       setPolicies(data.policies || [])
       setLocationValues(data.locationValues || [])
+      setSyncInfo({
+        isSynced: !!data.isSynced,
+        appClientId: data.appClientId || null,
+        appLocationId: data.appLocationId || null,
+      })
     } catch (err) {
       console.error('Error:', err)
       setError(err.message)
@@ -142,6 +148,36 @@ export default function OrigamiLocationDetailPage() {
             Back
           </button>
         </div>
+
+        {/* Sync status banner */}
+        {syncInfo.isSynced && syncInfo.appClientId && syncInfo.appLocationId ? (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-emerald-800">
+              <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>This location is synced with FSIS 360.</span>
+            </div>
+            <a
+              href={`/clients/${syncInfo.appClientId}/locations/${syncInfo.appLocationId}`}
+              className="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+            >
+              View in FSIS 360 →
+            </a>
+          </div>
+        ) : (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="flex items-start gap-2 text-sm text-amber-900">
+              <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="font-semibold">This location is not synced with FSIS 360.</p>
+                <p className="mt-0.5 text-amber-800">Only Origami claims, policies, and basic address info are available here — SOV details, construction, and risk data from FSIS 360 won&apos;t appear.</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

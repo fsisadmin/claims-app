@@ -37,14 +37,34 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    // Fetch location
-    const { data: location, error: locError } = await supabaseAdmin
-      .from('origami_locations')
-      .select('*')
-      .eq('location_id', origamiLocationId)
-      .single()
+    // Fetch location + FSIS 360 mapping in parallel
+    const [{ data: location, error: locError }, { data: locMap }] = await Promise.all([
+      supabaseAdmin
+        .from('origami_locations')
+        .select('*')
+        .eq('location_id', origamiLocationId)
+        .single(),
+      supabaseAdmin
+        .from('origami_location_map')
+        .select('app_location_id')
+        .eq('origami_location_id', origamiLocationId)
+        .eq('entity_type', 'location')
+        .maybeSingle()
+        .then(r => ({ data: r.data })),
+    ])
 
     if (locError) throw locError
+
+    // If mapped, look up the app client id for a direct link to FSIS 360
+    let appClientId = null
+    if (locMap?.app_location_id) {
+      const { data: appLoc } = await supabaseAdmin
+        .from('locations')
+        .select('client_id')
+        .eq('id', locMap.app_location_id)
+        .maybeSingle()
+      appClientId = appLoc?.client_id || null
+    }
 
     // Fetch claims, location values, and incidents for this location
     const [claims, locationValues] = await Promise.all([
@@ -92,6 +112,20 @@ export async function POST(request) {
       policy_number: policyLookup[lv.policy_id]?.policy_number || null,
     }))
 
+    // Map coverage ids → human labels (Property / GL / WC / APD)
+    const COVERAGE_MAP = { 20: 'APD', 40: 'GL', 50: 'Property', 60: 'WC' }
+    const policyById = {}
+    policies.forEach(p => { policyById[p.policy_id] = p })
+
+    const getCoverageType = (c) => {
+      if (c.coverage_id && COVERAGE_MAP[c.coverage_id]) return COVERAGE_MAP[c.coverage_id]
+      const p = policyById[c.policy_id]
+      if (p?.major_coverage_id && COVERAGE_MAP[p.major_coverage_id]) return COVERAGE_MAP[p.major_coverage_id]
+      return null
+    }
+
+    const locationName = location?.description || location?.street1 || null
+
     // Calculate totals for claims
     const claimsWithTotals = claims.map(c => {
       const totalPaid = [c.paid1, c.paid2, c.paid3, c.paid4, c.paid5, c.paid6, c.paid7].reduce((s, v) => s + (Number(v) || 0), 0)
@@ -103,6 +137,8 @@ export async function POST(request) {
         total_reserved: totalReserved,
         total_recovery: totalRecovery,
         total_incurred: totalPaid + totalReserved - totalRecovery,
+        location_name: locationName,
+        coverage_type: getCoverageType(c),
       }
     })
 
@@ -111,6 +147,9 @@ export async function POST(request) {
       claims: claimsWithTotals,
       policies,
       locationValues: enrichedLV,
+      appLocationId: locMap?.app_location_id || null,
+      appClientId,
+      isSynced: !!locMap?.app_location_id,
     })
   } catch (error) {
     console.error('Location detail error:', error)
