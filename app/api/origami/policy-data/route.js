@@ -46,8 +46,8 @@ export async function POST(request) {
 
     if (policyError) throw policyError
 
-    // Step 2: Fetch claims for this policy, location_values (SOV), and ALL locations for this client
-    const [claims, locationValues, clientLocations] = await Promise.all([
+    // Step 2: Fetch claims, location_values (SOV), locations, coverages, carriers, named insureds
+    const [claims, locationValues, clientLocations, coverages, policyCarriers, namedInsureds] = await Promise.all([
       // Only fetch claims directly tied to this policy
       fetchAll(
         supabaseAdmin, 'origami_claims',
@@ -66,7 +66,45 @@ export async function POST(request) {
         'location_id, description, display_code, street1, city, state_id, postal_code, client_id, is_inactive',
         { client_id: policyData.client_id }
       ) : Promise.resolve([]),
+      // Policy coverages
+      fetchAll(
+        supabaseAdmin, 'origami_policy_coverages',
+        'policy_coverage_id, coverage_id, description, "limit", deductible, premium, sir, attachment_point, aggregate_limit, per_occurrence_limit, each_accident_limit, disease_each_employee_limit, disease_policy_limit, notes',
+        { policy_id: policyId },
+        'description',
+        true
+      ),
+      // Policy carriers
+      fetchAll(
+        supabaseAdmin, 'origami_policy_carriers',
+        'policy_carrier_id, carrier_id, policy_number, participation, "limit", premium, layer_number, commission, commission_amount, deductible, sir, aggregate_limit, per_occurrence_limit, attachment_point, notes',
+        { policy_id: policyId }
+      ),
+      // Named insureds
+      fetchAll(
+        supabaseAdmin, 'origami_policy_named_insureds',
+        'policy_named_insured_id, description',
+        { policy_id: policyId }
+      ),
     ])
+
+    // Enrich carriers with carrier names
+    let carrierIds = policyCarriers.map(pc => pc.carrier_id).filter(Boolean)
+    let carrierLookup = {}
+    if (carrierIds.length > 0) {
+      const carriers = await fetchAll(
+        supabaseAdmin, 'origami_carriers',
+        'carrier_id, description, legal_name, display_code',
+        { carrier_id_in: carrierIds }
+      )
+      carriers.forEach(c => { carrierLookup[c.carrier_id] = c })
+    }
+
+    const enrichedCarriers = policyCarriers.map(pc => ({
+      ...pc,
+      carrier_name: carrierLookup[pc.carrier_id]?.description || carrierLookup[pc.carrier_id]?.legal_name || null,
+      carrier_code: carrierLookup[pc.carrier_id]?.display_code || null,
+    }))
 
     // Fetch app location mappings for these locations
     const clientLocationIds = clientLocations.map(l => l.location_id)
@@ -169,6 +207,9 @@ export async function POST(request) {
       policy: policyData,
       claims: claimsWithNotes,
       locations: enrichedLocations,
+      coverages,
+      carriers: enrichedCarriers,
+      namedInsureds,
       hasSOV: locationValues.length > 0,
     })
   } catch (error) {

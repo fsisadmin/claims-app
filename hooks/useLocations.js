@@ -218,16 +218,58 @@ async function fetchClients({ organizationId }) {
 
   const startTime = Date.now()
   console.log('[Clients] Starting fetch...')
-  const { data, error } = await supabase
-    .from('clients')
-    .select(CLIENTS_LIST_COLUMNS)
-    .eq('organization_id', organizationId)
-    .order('name', { ascending: true })
-    .limit(500) // Safety limit
-  console.log(`[Clients] Fetch completed in ${Date.now() - startTime}ms, got ${data?.length || 0} clients`)
 
-  if (error) throw error
-  return data || []
+  // Fetch all origami clients (paginated past 1000 limit) and mappings in parallel
+  async function fetchAllOrigamiClients() {
+    const PAGE = 1000
+    let all = []
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('origami_clients')
+        .select('client_id, name, street1, city, state, postal_code, primary_contact_name, primary_contact_email, reference_number')
+        .order('name', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE) break
+      from += PAGE
+    }
+    return all
+  }
+
+  const [origamiClients, mappingRes] = await Promise.all([
+    fetchAllOrigamiClients(),
+    supabase
+      .from('origami_client_map')
+      .select('origami_client_id, app_client_id')
+      .eq('organization_id', organizationId)
+      .eq('entity_type', 'client'),
+  ])
+
+  // Build mapping lookup
+  const mapLookup = {}
+  ;(mappingRes.data || []).forEach(m => { mapLookup[m.origami_client_id] = m.app_client_id })
+
+  // Transform origami clients to match expected shape
+  const clients = origamiClients
+    .map(oc => ({
+      id: mapLookup[oc.client_id] || `origami-${oc.client_id}`,
+      app_client_id: mapLookup[oc.client_id] || null,
+      origami_client_id: oc.client_id,
+      name: oc.name,
+      state: oc.state,
+      ams_code: oc.reference_number,
+      client_number: null,
+      producer_name: null,
+      account_manager: null,
+      city: oc.city,
+      street_address: oc.street1,
+      is_mapped: !!mapLookup[oc.client_id],
+    }))
+
+  console.log(`[Clients] Fetch completed in ${Date.now() - startTime}ms, got ${clients.length} clients`)
+  return clients
 }
 
 // Custom hook for fetching all clients with SWR caching (use for search)

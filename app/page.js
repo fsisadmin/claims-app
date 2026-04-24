@@ -11,6 +11,7 @@ export default function Home() {
   const router = useRouter()
   const { user, profile, loading: authLoading, connectionError, retryConnection } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedLetter, setSelectedLetter] = useState(null)
 
   // Use SWR-cached clients hook - instant load on subsequent visits
   const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id)
@@ -334,37 +335,87 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Search Results - Only show when searching */}
-            {searchQuery && filteredClients.length > 0 && (
+            {/* Client List */}
+            {searchQuery ? (
               <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">
-                  Search Results ({filteredClients.length})
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Results ({filteredClients.length})
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredClients.map(client => (
-                    <ClientCard key={client.id} client={client} />
-                  ))}
+                <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                  {filteredClients.length > 0 ? filteredClients.map(client => {
+                    const href = client.app_client_id ? `/clients/${client.app_client_id}` : client.origami_client_id ? `/origami/clients/${client.origami_client_id}` : `/clients/${client.id}`
+                    return (
+                      <a key={client.origami_client_id || client.id} href={href} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-medium text-gray-900">{client.name}</span>
+                          {client.ams_code && <span className="text-xs text-gray-400">{client.ams_code}</span>}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {client.city && <span className="text-xs text-gray-500">{client.city}{client.state ? `, ${client.state}` : ''}</span>}
+                          <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </div>
+                      </a>
+                    )
+                  }) : (
+                    <div className="px-4 py-8 text-center text-gray-400 text-sm">No clients matching &quot;{searchQuery}&quot;</div>
+                  )}
                 </div>
               </div>
-            )}
-
-            {/* Empty State - Search */}
-            {searchQuery && filteredClients.length === 0 && (
-              <div className="text-center py-16">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
+            ) : (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  All Clients ({clients.length})
+                </h3>
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('').map(letter => {
+                    const count = clients.filter(c => {
+                      const first = (c.name || '').charAt(0).toUpperCase()
+                      return letter === '#' ? !/[A-Z]/.test(first) : first === letter
+                    }).length
+                    const isActive = selectedLetter === letter
+                    return (
+                      <button
+                        key={letter}
+                        onClick={() => setSelectedLetter(isActive ? null : letter)}
+                        disabled={count === 0}
+                        className={`w-9 h-9 text-sm font-semibold rounded-lg transition-colors ${
+                          isActive
+                            ? 'bg-[#006B7D] text-white'
+                            : count > 0
+                              ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-[#006B7D]/30'
+                              : 'bg-gray-50 text-gray-300 cursor-default'
+                        }`}
+                      >
+                        {letter}
+                      </button>
+                    )
+                  })}
                 </div>
-                <p className="text-gray-600 font-medium">No clients found matching "{searchQuery}"</p>
-                <p className="text-gray-500 text-sm mt-2">Try adjusting your search terms</p>
-              </div>
-            )}
-
-            {/* Empty State - No Recent Clients */}
-            {!searchQuery && recentClients.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-gray-500">Search for a client or view your recently accessed clients here</p>
+                {selectedLetter && (() => {
+                  const letterClients = clients.filter(c => {
+                    const first = (c.name || '').charAt(0).toUpperCase()
+                    return selectedLetter === '#' ? !/[A-Z]/.test(first) : first === selectedLetter
+                  })
+                  return (
+                    <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                      {letterClients.map(client => {
+                        const href = client.app_client_id ? `/clients/${client.app_client_id}` : client.origami_client_id ? `/origami/clients/${client.origami_client_id}` : `/clients/${client.id}`
+                        return (
+                          <a key={client.origami_client_id || client.id} href={href} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-gray-900">{client.name}</span>
+                              {client.ams_code && <span className="text-xs text-gray-400">{client.ams_code}</span>}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {client.city && <span className="text-xs text-gray-500">{client.city}{client.state ? `, ${client.state}` : ''}</span>}
+                              <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </div>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </>

@@ -59,6 +59,14 @@ export default function ClientDetailPage() {
   const [origamiIncidents, setOrigamiIncidents] = useState([])
   const [origamiLoading, setOrigamiLoading] = useState(false)
   const [origamiFetched, setOrigamiFetched] = useState(false)
+  const [origamiClientIds, setOrigamiClientIds] = useState([])
+  const [origamiLocations, setOrigamiLocations] = useState([])
+  const [showNewClaimModal, setShowNewClaimModal] = useState(false)
+  const [showNewIncidentModal, setShowNewIncidentModal] = useState(false)
+  const [newClaimForm, setNewClaimForm] = useState({ claimant: '', loss_date: '', loss_description: '', location_id: '', claim_number: '' })
+  const [newIncidentForm, setNewIncidentForm] = useState({ claimant: '', loss_date: '', loss_description: '', event_description: '', location_id: '' })
+  const [creatingClaim, setCreatingClaim] = useState(false)
+  const [creatingIncident, setCreatingIncident] = useState(false)
 
   // Check URL for tab param
   useEffect(() => {
@@ -146,6 +154,8 @@ export default function ClientDetailPage() {
       setOrigamiClaims(data.claims || [])
       setOrigamiPolicies(data.policies || [])
       setOrigamiIncidents(data.incidents || [])
+      setOrigamiClientIds(data.origamiClientIds || [])
+      setOrigamiLocations(data.origamiLocations || [])
       setOrigamiFetched(true)
     } catch (error) {
       console.error('Error fetching origami data:', error)
@@ -230,6 +240,48 @@ export default function ClientDetailPage() {
         </main>
       </div>
     )
+  }
+
+  const handleCreateClaim = async () => {
+    if (!newClaimForm.claimant) return alert('Claimant name is required')
+    setCreatingClaim(true)
+    try {
+      const res = await fetch('/api/origami/create-claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newClaimForm, client_id: origamiClientIds[0] }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShowNewClaimModal(false)
+      setNewClaimForm({ claimant: '', loss_date: '', loss_description: '', location_id: '', claim_number: '' })
+      router.push(`/origami/claims/${data.claim.claim_id}`)
+    } catch (err) {
+      alert('Failed to create claim: ' + err.message)
+    } finally {
+      setCreatingClaim(false)
+    }
+  }
+
+  const handleCreateIncident = async () => {
+    if (!newIncidentForm.claimant) return alert('Claimant name is required')
+    setCreatingIncident(true)
+    try {
+      const res = await fetch('/api/origami/create-incident', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newIncidentForm, client_id: origamiClientIds[0] }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShowNewIncidentModal(false)
+      setNewIncidentForm({ claimant: '', loss_date: '', loss_description: '', event_description: '', location_id: '' })
+      router.push(`/origami/incidents/${data.incident.incident_id}`)
+    } catch (err) {
+      alert('Failed to create incident: ' + err.message)
+    } finally {
+      setCreatingIncident(false)
+    }
   }
 
   const initials = getInitials(client.name)
@@ -506,6 +558,26 @@ export default function ClientDetailPage() {
                 </div>
               </button>
               <button
+                onClick={() => setActiveTab('origami-policies')}
+                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === 'origami-policies'
+                    ? 'border-[#006B7D] text-[#006B7D]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Policies
+                  {origamiFetched && (
+                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                      {origamiPolicies.length}
+                    </span>
+                  )}
+                </div>
+              </button>
+              <button
                 onClick={() => setActiveTab('locations')}
                 className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
                   activeTab === 'locations'
@@ -542,26 +614,6 @@ export default function ClientDetailPage() {
                   </span>
                 </div>
               </button>
-              <button
-                onClick={() => setActiveTab('origami-policies')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'origami-policies'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Policies
-                  {origamiFetched && (
-                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                      {origamiPolicies.length}
-                    </span>
-                  )}
-                </div>
-              </button>
             </nav>
           </div>
 
@@ -575,7 +627,10 @@ export default function ClientDetailPage() {
                     <p className="mt-2 text-gray-600">Loading incidents...</p>
                   </div>
                 ) : (
-                  <OrigamiIncidentsTable incidents={origamiIncidents} />
+                  <OrigamiIncidentsTable
+                    incidents={origamiIncidents}
+                    onNewIncident={origamiClientIds.length > 0 ? () => setShowNewIncidentModal(true) : undefined}
+                  />
                 )}
               </>
             )}
@@ -587,13 +642,38 @@ export default function ClientDetailPage() {
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
                     <p className="mt-2 text-gray-600">Loading locations...</p>
                   </div>
-                ) : (
+                ) : activeLocations.length > 0 ? (
                   <LocationsTable
                     locations={activeLocations}
                     clientId={params.id}
                     organizationId={profile.organization_id}
                     onRefresh={refreshLocations}
                   />
+                ) : null}
+
+                {/* Origami Locations (not linked to app) */}
+                {origamiLocations.length > 0 && activeLocations.length === 0 && (
+                  <div className={activeLocations.length > 0 ? 'mt-6' : ''}>
+                    <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                      Origami Locations ({origamiLocations.length})
+                    </h4>
+                    <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                      {origamiLocations.map(loc => (
+                        <a key={loc.location_id} href={`/origami/locations/${loc.location_id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{loc.description || loc.street1 || `Location ${loc.location_id}`}</p>
+                            <p className="text-xs text-gray-500">
+                              {[loc.street1, loc.city, loc.state_id, loc.postal_code].filter(Boolean).join(', ')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">#{loc.display_code || loc.location_id}</span>
+                            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </>
             )}
@@ -624,7 +704,10 @@ export default function ClientDetailPage() {
                     <p className="mt-2 text-gray-600">Loading claims...</p>
                   </div>
                 ) : (
-                  <OrigamiClaimsTable claims={origamiClaims} />
+                  <OrigamiClaimsTable
+                    claims={origamiClaims}
+                    onNewClaim={origamiClientIds.length > 0 ? () => setShowNewClaimModal(true) : undefined}
+                  />
                 )}
               </>
             )}
@@ -644,6 +727,182 @@ export default function ClientDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* New Claim Modal */}
+      {showNewClaimModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">New Claim</h3>
+              <button onClick={() => setShowNewClaimModal(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Claimant *</label>
+                <input
+                  type="text"
+                  value={newClaimForm.claimant}
+                  onChange={(e) => setNewClaimForm(p => ({ ...p, claimant: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="Claimant name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Claim Number</label>
+                <input
+                  type="text"
+                  value={newClaimForm.claim_number}
+                  onChange={(e) => setNewClaimForm(p => ({ ...p, claim_number: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="Auto-generated if blank"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Loss Date</label>
+                <input
+                  type="date"
+                  value={newClaimForm.loss_date}
+                  onChange={(e) => setNewClaimForm(p => ({ ...p, loss_date: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <select
+                  value={newClaimForm.location_id}
+                  onChange={(e) => setNewClaimForm(p => ({ ...p, location_id: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900 bg-white"
+                >
+                  <option value="">— Select Location —</option>
+                  {origamiLocations.map(l => (
+                    <option key={l.location_id} value={l.location_id}>
+                      {l.description || l.street1 || `Location ${l.location_id}`}{l.city ? ` — ${l.city}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Loss Description</label>
+                <textarea
+                  value={newClaimForm.loss_description}
+                  onChange={(e) => setNewClaimForm(p => ({ ...p, loss_description: e.target.value }))}
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="Describe the loss..."
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowNewClaimModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateClaim}
+                disabled={creatingClaim || !newClaimForm.claimant}
+                className="px-4 py-2 text-sm text-white bg-[#006B7D] hover:bg-[#008BA3] rounded-lg disabled:opacity-50"
+              >
+                {creatingClaim ? 'Creating...' : 'Create Claim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Incident Modal */}
+      {showNewIncidentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">New Incident</h3>
+              <button onClick={() => setShowNewIncidentModal(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Claimant *</label>
+                <input
+                  type="text"
+                  value={newIncidentForm.claimant}
+                  onChange={(e) => setNewIncidentForm(p => ({ ...p, claimant: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="Claimant name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Loss Date</label>
+                <input
+                  type="date"
+                  value={newIncidentForm.loss_date}
+                  onChange={(e) => setNewIncidentForm(p => ({ ...p, loss_date: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <select
+                  value={newIncidentForm.location_id}
+                  onChange={(e) => setNewIncidentForm(p => ({ ...p, location_id: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900 bg-white"
+                >
+                  <option value="">— Select Location —</option>
+                  {origamiLocations.map(l => (
+                    <option key={l.location_id} value={l.location_id}>
+                      {l.description || l.street1 || `Location ${l.location_id}`}{l.city ? ` — ${l.city}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Description</label>
+                <textarea
+                  value={newIncidentForm.event_description}
+                  onChange={(e) => setNewIncidentForm(p => ({ ...p, event_description: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="What happened..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Loss Description</label>
+                <textarea
+                  value={newIncidentForm.loss_description}
+                  onChange={(e) => setNewIncidentForm(p => ({ ...p, loss_description: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B7D] text-gray-900"
+                  placeholder="Describe the loss..."
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowNewIncidentModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateIncident}
+                disabled={creatingIncident || !newIncidentForm.claimant}
+                className="px-4 py-2 text-sm text-white bg-[#006B7D] hover:bg-[#008BA3] rounded-lg disabled:opacity-50"
+              >
+                {creatingIncident ? 'Creating...' : 'Create Incident'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

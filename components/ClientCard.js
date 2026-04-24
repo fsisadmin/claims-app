@@ -24,8 +24,14 @@ function getColorFromName(name) {
 }
 
 const ClientCard = memo(function ClientCard({ client }) {
+  const href = client.app_client_id
+    ? `/clients/${client.app_client_id}`
+    : client.origami_client_id
+      ? `/origami/clients/${client.origami_client_id}`
+      : `/clients/${client.id}`
+
   return (
-    <Link href={`/clients/${client.id}`}>
+    <Link href={href}>
       <div className="group bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 cursor-pointer hover:border-[#006B7D]/30 h-64 flex flex-col">
         {/* Logo */}
         <div className="flex justify-center mb-3 flex-1 items-center">

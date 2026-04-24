@@ -19,7 +19,7 @@ export default function LocationDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({})
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('lenders')
+  const [activeTab, setActiveTab] = useState('claims')
   const [claims, setClaims] = useState([])
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [linkedPolicies, setLinkedPolicies] = useState([])
@@ -35,6 +35,8 @@ export default function LocationDetailPage() {
   const [origamiLoading, setOrigamiLoading] = useState(false)
   const [origamiFetched, setOrigamiFetched] = useState(false)
   const [hasOrigamiData, setHasOrigamiData] = useState(false)
+  const [origamiLocationIds, setOrigamiLocationIds] = useState([])
+  const [exporting, setExporting] = useState(false)
 
   // Use SWR hooks for cached data fetching
   const { location, isLoading: locationLoading, mutate: mutateLocation } = useLocation(params.locationId, profile?.organization_id)
@@ -46,70 +48,6 @@ export default function LocationDetailPage() {
       setEditData(location)
     }
   }, [location])
-
-  // Fetch claims for this location
-  useEffect(() => {
-    async function fetchClaims() {
-      if (!params.locationId || !profile?.organization_id) return
-
-      setClaimsLoading(true)
-      try {
-        const { data, error } = await supabase
-          .from('claims')
-          .select('*')
-          .eq('location_id', params.locationId)
-          .eq('organization_id', profile.organization_id)
-          .order('loss_date', { ascending: false })
-          .limit(100)
-
-        if (error) throw error
-        setClaims(data || [])
-      } catch (error) {
-        console.error('Error fetching claims:', error)
-      } finally {
-        setClaimsLoading(false)
-      }
-    }
-
-    fetchClaims()
-  }, [params.locationId, profile?.organization_id])
-
-  // Fetch policies linked to this location via policy_locations junction table
-  useEffect(() => {
-    async function fetchLinkedPolicies() {
-      if (!params.locationId || !profile?.organization_id) return
-
-      setPoliciesLoading(true)
-      try {
-        const { data, error } = await supabase
-          .from('policy_locations')
-          .select(`
-            id,
-            location_tiv,
-            location_premium,
-            policy:policies(
-              id, policy_number, policy_type, carrier,
-              effective_date, expiration_date, status, premium,
-              client_id
-            )
-          `)
-          .eq('location_id', params.locationId)
-
-        if (error) throw error
-        // Filter out any null policies and sort by effective date
-        const policies = (data || [])
-          .filter(pl => pl.policy)
-          .sort((a, b) => new Date(b.policy.effective_date) - new Date(a.policy.effective_date))
-        setLinkedPolicies(policies)
-      } catch (error) {
-        console.error('Error fetching linked policies:', error)
-      } finally {
-        setPoliciesLoading(false)
-      }
-    }
-
-    fetchLinkedPolicies()
-  }, [params.locationId, profile?.organization_id])
 
   // Check if this location has origami data + fetch when tab clicked
   useEffect(() => {
@@ -131,7 +69,7 @@ export default function LocationDetailPage() {
   useEffect(() => {
     async function fetchOrigami() {
       if (!params.locationId || !profile?.organization_id || origamiFetched) return
-      if (activeTab !== 'origami-claims' && activeTab !== 'origami-policies' && activeTab !== 'origami-incidents') return
+      if (activeTab !== 'claims' && activeTab !== 'policies') return
 
       setOrigamiLoading(true)
       try {
@@ -145,6 +83,7 @@ export default function LocationDetailPage() {
         setOrigamiClaims(data.claims || [])
         setOrigamiPolicies(data.policies || [])
         setOrigamiIncidents(data.incidents || [])
+        setOrigamiLocationIds(data.origamiLocationIds || [])
         setHasOrigamiData(data.hasOrigamiData)
         setOrigamiFetched(true)
       } catch (error) {
@@ -168,6 +107,33 @@ export default function LocationDetailPage() {
     }
     fetchUsers()
   }, [profile?.organization_id])
+
+  const handleExportLossLetter = async () => {
+    if (!origamiLocationIds.length) return alert('No origami location linked')
+    setExporting(true)
+    try {
+      const res = await fetch('/api/origami/loss-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origamiLocationId: origamiLocationIds[0],
+          organizationId: profile.organization_id,
+        }),
+      })
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error) }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'Loss Letter.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Export failed: ' + err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -649,61 +615,26 @@ export default function LocationDetailPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Edit
-                </button>
+                <div className="flex items-center gap-2">
+                  {origamiLocationIds.length > 0 && (
+                    <button
+                      onClick={handleExportLossLetter}
+                      disabled={exporting}
+                      className="px-3 py-2 text-sm text-[#006B7D] hover:bg-[#006B7D]/5 border border-[#006B7D]/30 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      {exporting ? 'Exporting...' : 'Loss Letter'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Edit
+                  </button>
+                </div>
               </>
             )}
-          </div>
-        </div>
-
-        {/* Location Risk Assessment */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-[#006B7D] mb-4">Location Risk Assessment</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <tbody className="divide-y divide-gray-100">
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600 w-48">Tier 1 Wind</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.tier_1_wind)}`}>
-                    {location.tier_1_wind || '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600">Coastal Flooding</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.coastal_flooding_risk)}`}>
-                    {location.coastal_flooding_risk || location.coastal_flooding || '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600">Wildfire</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.wildfire || location.wildfire_risk)}`}>
-                    {location.wildfire || location.wildfire_risk || '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600">Earthquake</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.earthquake_risk)}`}>
-                    {location.earthquake_risk || location.earthquake || '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600">Tornado</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.tornado_risk)}`}>
-                    {location.tornado_risk || location.tornado || '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-600">Flood Zone</td>
-                  <td className={`px-6 py-4 text-sm font-medium ${getRiskColor(location.flood_zone)}`}>
-                    {location.flood_zone || '-'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
           </div>
         </div>
 
@@ -912,21 +843,6 @@ export default function LocationDetailPage() {
             <div className="border-b border-gray-200">
               <nav className="flex">
                 <button
-                  onClick={() => setActiveTab('lenders')}
-                  className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                    activeTab === 'lenders'
-                      ? 'border-[#006B7D] text-[#006B7D]'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                    Lender Info
-                  </div>
-                </button>
-                <button
                   onClick={() => setActiveTab('claims')}
                   className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
                     activeTab === 'claims'
@@ -939,6 +855,11 @@ export default function LocationDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     Claims
+                    {origamiFetched && (
+                      <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-[#006B7D]/10 text-[#006B7D]">
+                        {origamiClaims.length}
+                      </span>
+                    )}
                   </div>
                 </button>
                 <button
@@ -954,395 +875,25 @@ export default function LocationDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
                     Policies
+                    {origamiFetched && (
+                      <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-[#006B7D]/10 text-[#006B7D]">
+                        {origamiPolicies.length}
+                      </span>
+                    )}
                   </div>
                 </button>
-                {hasOrigamiData && (
-                  <>
-                    <button
-                      onClick={() => setActiveTab('origami-claims')}
-                      className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                        activeTab === 'origami-claims'
-                          ? 'border-orange-500 text-orange-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Origami Claims
-                        {origamiFetched && (
-                          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-600">
-                            {origamiClaims.length}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('origami-policies')}
-                      className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                        activeTab === 'origami-policies'
-                          ? 'border-orange-500 text-orange-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        Origami Policies
-                        {origamiFetched && (
-                          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-600">
-                            {origamiPolicies.length}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  </>
-                )}
               </nav>
             </div>
 
             {/* Tab Content */}
             <div className="p-6">
-              {/* Lender Info Tab */}
-              {activeTab === 'lenders' && (
-                <div>
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Lender Information</h3>
-                    <button className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors">
-                      Add Lender
-                    </button>
-                  </div>
-
-                  {/* Lender Details */}
-                  <div className="space-y-4 mb-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Lenders</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.lenders || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Lender Name Rollup</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.lender_name_rollup || '-'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Certificate Recipients */}
-                  <div className="border-t border-gray-200 pt-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="text-md font-semibold text-gray-900">Certificate Recipients</h4>
-                      <button className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-                        Add Recipient
-                      </button>
-                    </div>
-                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                      <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <p className="text-sm">No certificate recipients found.</p>
-                    </div>
-                  </div>
-
-                  {/* EPI Info */}
-                  <div className="border-t border-gray-200 pt-6 mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">EPI Certificate Info</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">EPI Certificate</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.epi_certificate || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">EPI Certificate To Use</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.epi_certificate_to_use_name || location.epi_certificate_to_use || '-'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-600 mb-1">EPI Additional Remarks</label>
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900 min-h-[60px]">
-                        {location.location_epi_additional_remarks || 'No remarks'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* COI Info */}
-                  <div className="border-t border-gray-200 pt-6 mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">COI Certificate Info</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">COI Certificate</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.coi_certificate || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">COI Certificate To Use</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.coi_certificate_to_use || '-'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-600 mb-1">COI Additional Remarks</label>
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900 min-h-[60px]">
-                        {location.coi_location_specific_additional_remarks || 'No remarks'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Claims Tab */}
               {activeTab === 'claims' && (
-                <div>
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Claims History</h3>
-                    <button
-                      onClick={() => router.push(`/clients/${params.id}/claims/add?location=${params.locationId}`)}
-                      className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Add Claim
-                    </button>
-                  </div>
-
-                  {/* Claims Summary - calculated from actual claims */}
-                  {(() => {
-                    const openClaims = claims.filter(c => c.status?.toUpperCase() === 'OPEN')
-                    const totalOpenValue = openClaims.reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
-                    const fiveYearsAgo = new Date()
-                    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
-                    const recentClaims = claims.filter(c => new Date(c.loss_date) >= fiveYearsAgo)
-                    const propTotal = recentClaims.filter(c => c.claim_type?.toLowerCase().includes('prop') || c.coverage?.toLowerCase().includes('prop')).reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
-                    const glTotal = recentClaims.filter(c => c.claim_type?.toLowerCase().includes('liability') || c.coverage?.toLowerCase().includes('liability')).reduce((sum, c) => sum + (Number(c.total_incurred) || 0), 0)
-
-                    return (
-                      <>
-                        <div className="grid grid-cols-3 gap-4 mb-6">
-                          <div className="bg-gray-50 rounded-lg p-4">
-                            <p className="text-sm text-gray-600 mb-1">Open Claims</p>
-                            <p className="text-2xl font-bold text-gray-900">{openClaims.length}</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4">
-                            <p className="text-sm text-gray-600 mb-1">Total Open Claims Value</p>
-                            <p className="text-2xl font-bold text-gray-900">
-                              ${totalOpenValue.toLocaleString()}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4">
-                            <p className="text-sm text-gray-600 mb-1">Loss Run Summary</p>
-                            <p className="text-sm font-medium text-gray-900">{location.loss_run_summary || '-'}</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                          <div className="bg-blue-100 rounded-lg p-4 border border-blue-200">
-                            <p className="text-sm font-medium text-blue-800 mb-1">Total Incurred (5 Years) - Property</p>
-                            <p className="text-2xl font-bold text-blue-900">
-                              ${propTotal.toLocaleString()}
-                            </p>
-                          </div>
-                          <div className="bg-emerald-100 rounded-lg p-4 border border-emerald-200">
-                            <p className="text-sm font-medium text-emerald-800 mb-1">Total Incurred (5 Years) - GL</p>
-                            <p className="text-2xl font-bold text-emerald-900">
-                              ${glTotal.toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )
-                  })()}
-
-                  {/* Claims List */}
-                  <div className="border-t border-gray-200 pt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">Claims List</h4>
-                    {claimsLoading ? (
-                      <div className="text-center py-8">
-                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                        <p className="mt-2 text-gray-600">Loading claims...</p>
-                      </div>
-                    ) : claims.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Claim #</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date of Loss</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total Incurred</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {claims.map(claim => (
-                              <tr
-                                key={claim.id}
-                                onClick={() => router.push(`/claims/${claim.id}`)}
-                                className="hover:bg-gray-50 cursor-pointer"
-                              >
-                                <td className="px-4 py-3 text-sm font-medium text-[#006B7D]">
-                                  {claim.claim_number || '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-900">
-                                  {claim.loss_date ? new Date(claim.loss_date).toLocaleDateString() : '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-900">
-                                  {claim.claim_type || claim.coverage || '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    claim.status?.toUpperCase() === 'OPEN'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-green-100 text-green-800'
-                                  }`}>
-                                    {claim.status || '-'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-900">
-                                  {claim.total_incurred ? `$${Number(claim.total_incurred).toLocaleString()}` : '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
-                                  {claim.loss_description || '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <p className="text-sm">No claims found for this location.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Policies Tab */}
-              {activeTab === 'policies' && (
-                <div>
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Linked Policies ({linkedPolicies.length})</h3>
-                  </div>
-
-                  {/* Linked Policies List */}
-                  {policiesLoading ? (
-                    <div className="text-center py-8">
-                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                      <p className="mt-2 text-gray-600">Loading policies...</p>
-                    </div>
-                  ) : linkedPolicies.length > 0 ? (
-                    <div className="overflow-x-auto mb-6">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Policy #</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Carrier</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Effective</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Expiration</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {linkedPolicies.map(pl => (
-                            <tr
-                              key={pl.id}
-                              onClick={() => router.push(`/policies/${pl.policy.id}`)}
-                              className="hover:bg-gray-50 cursor-pointer"
-                            >
-                              <td className="px-4 py-3 text-sm font-medium text-[#006B7D]">
-                                {pl.policy.policy_number || '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900">
-                                {pl.policy.policy_type || '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900">
-                                {pl.policy.carrier || '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900">
-                                {pl.policy.effective_date ? new Date(pl.policy.effective_date).toLocaleDateString() : '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900">
-                                {pl.policy.expiration_date ? new Date(pl.policy.expiration_date).toLocaleDateString() : '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  pl.policy.status === 'active'
-                                    ? 'bg-green-100 text-green-800'
-                                    : pl.policy.status === 'expired'
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {pl.policy.status ? pl.policy.status.charAt(0).toUpperCase() + pl.policy.status.slice(1) : '-'}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg mb-6">
-                      <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      <p className="text-sm">No policies linked to this location.</p>
-                    </div>
-                  )}
-
-                  {/* Deductibles */}
-                  <div className="border-t border-gray-200 pt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-4">Location Deductibles</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Deductible</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.deductible || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">NWS Deductible</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.nws_deductible || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Wind/Hail Deductible</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.wind_hail_deductible || '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Self Insured Retention</label>
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
-                          {location.self_insured_retention || '-'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Origami Claims Tab */}
-              {activeTab === 'origami-claims' && (
                 <div>
                   {origamiLoading ? (
                     <div className="text-center py-8">
                       <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                      <p className="mt-2 text-gray-600 text-sm">Loading origami claims...</p>
+                      <p className="mt-2 text-gray-600 text-sm">Loading claims...</p>
                     </div>
                   ) : (
                     <OrigamiClaimsTable claims={origamiClaims} />
@@ -1350,13 +901,13 @@ export default function LocationDetailPage() {
                 </div>
               )}
 
-              {/* Origami Policies Tab */}
-              {activeTab === 'origami-policies' && (
+              {/* Policies Tab */}
+              {activeTab === 'policies' && (
                 <div>
                   {origamiLoading ? (
                     <div className="text-center py-8">
                       <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#006B7D]"></div>
-                      <p className="mt-2 text-gray-600 text-sm">Loading origami policies...</p>
+                      <p className="mt-2 text-gray-600 text-sm">Loading policies...</p>
                     </div>
                   ) : (
                     <OrigamiPoliciesTable policies={origamiPolicies} />

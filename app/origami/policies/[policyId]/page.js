@@ -62,10 +62,13 @@ export default function OrigamiPolicyDetailPage() {
   const [policy, setPolicy] = useState(null)
   const [claims, setClaims] = useState([])
   const [locations, setLocations] = useState([])
+  const [coverages, setCoverages] = useState([])
+  const [carriers, setCarriers] = useState([])
+  const [namedInsureds, setNamedInsureds] = useState([])
   const [hasSOV, setHasSOV] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('locations')
+  const [activeTab, setActiveTab] = useState('details')
   const [claimSearch, setClaimSearch] = useState('')
   const [claimSort, setClaimSort] = useState({ key: 'loss_date', dir: 'desc' })
 
@@ -94,6 +97,9 @@ export default function OrigamiPolicyDetailPage() {
         setPolicy(data.policy)
         setClaims(data.claims || [])
         setLocations(data.locations || [])
+        setCoverages(data.coverages || [])
+        setCarriers(data.carriers || [])
+        setNamedInsureds(data.namedInsureds || [])
         setHasSOV(data.hasSOV || false)
       } catch (err) {
         console.error('Error fetching policy data:', err)
@@ -216,37 +222,57 @@ export default function OrigamiPolicyDetailPage() {
             </div>
           </div>
 
-          {/* Policy Details Grid */}
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-sm mb-8">
-            <div className="flex">
-              <div className="w-40 font-medium text-gray-500">Policy Number</div>
-              <div className="text-gray-900">{policy.policy_number || '—'}</div>
-            </div>
-            <div className="flex">
-              <div className="w-40 font-medium text-gray-500">Status</div>
-              <div><StatusBadge status={policy.status} /></div>
-            </div>
-            <div className="flex">
-              <div className="w-40 font-medium text-gray-500">Effective Date</div>
-              <div className="text-gray-900">{formatDate(policy.effective_date)}</div>
-            </div>
-            <div className="flex">
-              <div className="w-40 font-medium text-gray-500">Expiration Date</div>
-              <div className={isExpired ? 'text-red-600 font-semibold' : 'text-gray-900'}>
-                {formatDate(policy.expiration_date)}
-                {isExpired && <span className="ml-2 text-xs">(Expired)</span>}
+          {/* Policy Detail + Terms Grid */}
+          <div className="grid grid-cols-2 gap-x-12 gap-y-1 text-sm mb-8">
+            <div>
+              <h3 className="text-base font-semibold text-[#006B7D] mb-3">Policy Detail</h3>
+              <div className="space-y-2">
+                <div className="flex"><div className="w-44 text-gray-500">Policy Number:</div><div className="text-gray-900 font-medium">{policy.policy_number || '—'}</div></div>
+                <div className="flex"><div className="w-44 text-gray-500">Description:</div><div className="text-gray-900">{policy.description || '—'}</div></div>
+                {carriers.length > 0 && (
+                  <div className="flex"><div className="w-44 text-gray-500">Carrier:</div><div className="text-[#006B7D] font-medium">{carriers[0].carrier_name || '—'}</div></div>
+                )}
+                {carriers.length > 0 && carriers[0].participation && (
+                  <div className="flex"><div className="w-44 text-gray-500">Participation:</div><div className="text-gray-900">{carriers[0].participation}%</div></div>
+                )}
+                {policy.major_coverage_id && (
+                  <div className="flex"><div className="w-44 text-gray-500">Coverage ID:</div><div className="text-gray-900">{policy.major_coverage_id}</div></div>
+                )}
+              </div>
+              <h3 className="text-base font-semibold text-[#006B7D] mt-6 mb-3">Premium Details</h3>
+              <div className="space-y-2">
+                <div className="flex"><div className="w-44 text-gray-500">Premium:</div><div className="text-gray-900 font-medium">{formatCurrency(policy.premium)}</div></div>
+                {hasSOV && <div className="flex"><div className="w-44 text-gray-500">Total Location Premium:</div><div className="text-gray-900">{formatCurrency(totalLocPremium)}</div></div>}
               </div>
             </div>
-            <div className="flex">
-              <div className="w-40 font-medium text-gray-500">Premium</div>
-              <div className="text-gray-900 font-semibold">{formatCurrency(policy.premium)}</div>
-            </div>
-            {policy.major_coverage_id && (
-              <div className="flex">
-                <div className="w-40 font-medium text-gray-500">Coverage ID</div>
-                <div className="text-gray-900">{policy.major_coverage_id}</div>
+            <div>
+              <h3 className="text-base font-semibold text-[#006B7D] mb-3">Terms</h3>
+              <div className="space-y-2">
+                <div className="flex"><div className="w-44 text-gray-500">Effective Date:</div><div className="text-gray-900">{formatDate(policy.effective_date)}</div></div>
+                <div className="flex">
+                  <div className="w-44 text-gray-500">Expiration Date:</div>
+                  <div className={isExpired ? 'text-red-600 font-semibold' : 'text-gray-900'}>
+                    {formatDate(policy.expiration_date)}
+                    {isExpired && <span className="ml-2 text-xs">(Expired)</span>}
+                  </div>
+                </div>
+                <div className="flex"><div className="w-44 text-gray-500">Status:</div><div><StatusBadge status={policy.status} /></div></div>
               </div>
-            )}
+              {(carriers.length > 0 && (carriers[0].limit || carriers[0].per_occurrence_limit || carriers[0].aggregate_limit || carriers[0].deductible || carriers[0].attachment_point)) && (
+                <>
+                  <h3 className="text-base font-semibold text-[#006B7D] mt-6 mb-3">Limits</h3>
+                  <div className="space-y-2">
+                    {carriers[0].limit && <div className="flex"><div className="w-44 text-gray-500">Limit:</div><div className="text-gray-900">{formatCurrency(carriers[0].limit)}</div></div>}
+                    {carriers[0].per_occurrence_limit && <div className="flex"><div className="w-44 text-gray-500">Per Occurrence:</div><div className="text-gray-900">{formatCurrency(carriers[0].per_occurrence_limit)}</div></div>}
+                    {carriers[0].aggregate_limit && <div className="flex"><div className="w-44 text-gray-500">Aggregate:</div><div className="text-gray-900">{formatCurrency(carriers[0].aggregate_limit)}</div></div>}
+                    {carriers[0].deductible && <div className="flex"><div className="w-44 text-gray-500">Deductible:</div><div className="text-gray-900">{formatCurrency(carriers[0].deductible)}</div></div>}
+                    {carriers[0].sir && <div className="flex"><div className="w-44 text-gray-500">SIR:</div><div className="text-gray-900">{formatCurrency(carriers[0].sir)}</div></div>}
+                    {carriers[0].attachment_point && <div className="flex"><div className="w-44 text-gray-500">Attachment Point:</div><div className="text-gray-900">{formatCurrency(carriers[0].attachment_point)}</div></div>}
+                    {carriers[0].layer_number && <div className="flex"><div className="w-44 text-gray-500">Layer:</div><div className="text-gray-900">{carriers[0].layer_number}</div></div>}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Summary Cards */}
@@ -283,47 +309,123 @@ export default function OrigamiPolicyDetailPage() {
         <div className="bg-white rounded-3xl shadow-md overflow-hidden">
           <div className="border-b border-gray-200">
             <nav className="flex">
-              <button
-                onClick={() => setActiveTab('locations')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'locations'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Covered Locations
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {locations.length}
-                  </span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('claims')}
-                className={`px-8 py-4 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === 'claims'
-                    ? 'border-[#006B7D] text-[#006B7D]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Claims
-                  <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                    {claims.length}
-                  </span>
-                </div>
-              </button>
+              {[
+                { id: 'coverages', label: 'Policy Coverages', count: coverages.length },
+                { id: 'locations', label: 'Covered Locations', count: locations.length },
+                { id: 'claims', label: 'Claims', count: claims.length },
+                ...(namedInsureds.length > 0 ? [{ id: 'named-insureds', label: 'Named Insureds', count: namedInsureds.length }] : []),
+                ...(carriers.length > 1 ? [{ id: 'carriers', label: 'Carriers', count: carriers.length }] : []),
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-6 py-4 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-[#006B7D] text-[#006B7D]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {tab.label}
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
+                      {tab.count}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </nav>
           </div>
 
           <div className="p-8">
+            {/* Coverages Tab */}
+            {activeTab === 'coverages' && (
+              <div>
+                {coverages.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400">No coverage details available for this policy</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Coverage</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Limit</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Aggregate Limit</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Per Occurrence</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Deductible</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Premium</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {coverages.map(cov => (
+                          <tr key={cov.policy_coverage_id} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">{cov.description || '—'}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{cov.limit ? formatCurrency(cov.limit) : '—'}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{cov.aggregate_limit ? formatCurrency(cov.aggregate_limit) : '—'}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{cov.per_occurrence_limit ? formatCurrency(cov.per_occurrence_limit) : '—'}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{cov.deductible ? formatCurrency(cov.deductible) : '—'}</td>
+                            <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{cov.premium ? formatCurrency(cov.premium) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Named Insureds Tab */}
+            {activeTab === 'named-insureds' && (
+              <div>
+                {namedInsureds.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400">No named insureds on this policy</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {namedInsureds.map(ni => (
+                      <div key={ni.policy_named_insured_id} className="p-4 bg-white rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-900 font-medium">{ni.description || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Carriers Tab (only shows if multiple carriers) */}
+            {activeTab === 'carriers' && (
+              <div>
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Carrier</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Policy Number</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Participation</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Limit</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Premium</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Layer</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {carriers.map(c => (
+                        <tr key={c.policy_carrier_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">{c.carrier_name || '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-900">{c.policy_number || '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{c.participation ? `${c.participation}%` : '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{c.limit ? formatCurrency(c.limit) : '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-900 text-right">{c.premium ? formatCurrency(c.premium) : '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-900 text-center">{c.layer_number || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Locations Tab */}
             {activeTab === 'locations' && (
               <div>
@@ -497,9 +599,9 @@ export default function OrigamiPolicyDetailPage() {
                           <td className="px-4 py-2.5"><ClaimStatusBadge status={c.status} /></td>
                           <td className="px-4 py-2.5 text-sm text-gray-600">{formatDate(c.loss_date)}</td>
                           <td className="px-4 py-2.5 text-sm text-gray-600">{c.location_name || '—'}</td>
-                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right font-mono">{formatCurrency(c.total_paid)}</td>
-                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right font-mono">{formatCurrency(c.total_reserved)}</td>
-                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right font-mono">{formatCurrency(c.total_incurred)}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(c.total_paid)}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(c.total_reserved)}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(c.total_incurred)}</td>
                           <td className="px-4 py-2.5 text-sm text-gray-500 max-w-xs truncate" title={c.loss_description}>{c.loss_description || '—'}</td>
                         </tr>
                       ))}

@@ -160,6 +160,20 @@ export async function POST(request) {
       appClientId = clientMap?.app_client_id || null
     }
 
+    // Fetch all locations and policies for this client (for pickers)
+    const [clientLocations, clientPolicies] = await Promise.all([
+      claim.client_id ? fetchAll(
+        supabaseAdmin, 'origami_locations',
+        'location_id, description, display_code, street1, city, state_id',
+        { client_id: claim.client_id }
+      ) : Promise.resolve([]),
+      claim.client_id ? fetchAll(
+        supabaseAdmin, 'origami_policies',
+        'policy_id, policy_number, description, effective_date, expiration_date',
+        { client_id: claim.client_id }
+      ) : Promise.resolve([]),
+    ])
+
     return NextResponse.json({
       claim: {
         ...claim,
@@ -176,6 +190,8 @@ export async function POST(request) {
         app_client_id: appClientId,
       } : null,
       policy,
+      clientLocations,
+      clientPolicies,
     })
   } catch (error) {
     console.error('Claim detail error:', error)

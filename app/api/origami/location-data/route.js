@@ -89,6 +89,53 @@ export async function POST(request) {
         ...p,
         location_values: locationValues.filter(lv => lv.policy_id === p.policy_id),
       }))
+    } else {
+      // Fallback: no SOV data for this location — show all client-level policies
+      // Get client_id from the origami location
+      const { data: origLocation } = await supabaseAdmin
+        .from('origami_locations')
+        .select('client_id')
+        .in('location_id', origamiLocationIds)
+        .limit(1)
+        .single()
+
+      if (origLocation?.client_id) {
+        policies = await fetchAll(
+          supabaseAdmin, 'origami_policies',
+          'policy_id, policy_number, description, effective_date, expiration_date, premium, status, major_coverage_id',
+          { client_id: origLocation.client_id },
+          'expiration_date'
+        )
+        // Fetch location counts per policy
+        if (policies.length > 0) {
+          const allPolicyIds = policies.map(p => p.policy_id)
+          const allLV = await fetchAll(
+            supabaseAdmin, 'origami_location_values',
+            'policy_id, location_id',
+            { policy_id_in: allPolicyIds }
+          )
+          policies = policies.map(p => ({
+            ...p,
+            location_values: allLV.filter(lv => lv.policy_id === p.policy_id),
+          }))
+        }
+      }
+    }
+
+    // Fetch policies linked to claims (for coverage type)
+    const claimPolicyIds = [...new Set(claims.map(c => c.policy_id).filter(Boolean))]
+    let claimPolicies = []
+    if (claimPolicyIds.length > 0) {
+      claimPolicies = await fetchAll(supabaseAdmin, 'origami_policies', 'policy_id, description, major_coverage_id', { policy_id_in: claimPolicyIds })
+    }
+    const claimPolicyLookup = {}
+    claimPolicies.forEach(p => { claimPolicyLookup[p.policy_id] = p })
+
+    const COVERAGE_MAP = { 20: 'APD', 40: 'GL', 50: 'Property', 60: 'WC' }
+    function getCoverageType(policy) {
+      if (!policy) return null
+      if (policy.major_coverage_id && COVERAGE_MAP[policy.major_coverage_id]) return COVERAGE_MAP[policy.major_coverage_id]
+      return null
     }
 
     // Calculate totals for claims
@@ -105,6 +152,7 @@ export async function POST(request) {
         total_reserved: totalReserved,
         total_recovery: totalRecovery,
         total_incurred: totalPaid + totalReserved - totalRecovery,
+        coverage_type: getCoverageType(claimPolicyLookup[c.policy_id]) || null,
       }
     })
 
@@ -112,6 +160,7 @@ export async function POST(request) {
       claims: claimsWithTotals,
       policies,
       incidents,
+      origamiLocationIds,
       hasOrigamiData: true,
     })
   } catch (error) {

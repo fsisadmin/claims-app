@@ -43,7 +43,7 @@ function StatusBadge({ status }) {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-export default function OrigamiClaimsTable({ claims = [] }) {
+export default function OrigamiClaimsTable({ claims = [], onNewClaim }) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: 'loss_date', direction: 'desc' })
@@ -157,23 +157,36 @@ export default function OrigamiClaimsTable({ claims = [] }) {
           </select>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <svg
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search claims..."
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
-          />
+        {/* Search + New Claim */}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <svg
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search claims..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900"
+            />
+          </div>
+          {onNewClaim && (
+            <button
+              onClick={onNewClaim}
+              className="px-4 py-2 text-sm text-white bg-[#006B7D] hover:bg-[#008BA3] rounded-lg flex items-center gap-2 whitespace-nowrap"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Claim
+            </button>
+          )}
         </div>
       </div>
 
@@ -191,6 +204,9 @@ export default function OrigamiClaimsTable({ claims = [] }) {
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('location_name')}>
                   Property <SortIcon column="location_name" />
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('coverage_type')}>
+                  Coverage <SortIcon column="coverage_type" />
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>
                   Status <SortIcon column="status" />
@@ -215,7 +231,7 @@ export default function OrigamiClaimsTable({ claims = [] }) {
             <tbody className="divide-y divide-gray-100">
               {paginatedClaims.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
                     {claims.length === 0 ? (
                       <div>
                         <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -242,6 +258,15 @@ export default function OrigamiClaimsTable({ claims = [] }) {
                     </td>
                     <td className="px-4 py-3 text-gray-900">{c.claimant || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{c.location_name || '—'}</td>
+                    <td className="px-4 py-3">
+                      {c.coverage_type ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                          c.coverage_type === 'GL' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {c.coverage_type}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={c.status} />
                     </td>

@@ -210,14 +210,19 @@ export async function POST(request) {
         messages: [{ role: 'user', content: prompt }],
       })
 
-      const text = response.content[0].text
+      let text = response.content[0].text
+      text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
       try {
         const parsed = JSON.parse(text)
-        allMatches.push(...parsed)
+        allMatches.push(...(Array.isArray(parsed) ? parsed : [parsed]))
       } catch {
         const match = text.match(/\[[\s\S]*\]/)
         if (match) {
-          allMatches.push(...JSON.parse(match[0]))
+          try {
+            allMatches.push(...JSON.parse(match[0]))
+          } catch (e2) {
+            console.error('Failed to parse extracted JSON:', e2.message, text.slice(0, 500))
+          }
         } else {
           console.error('Failed to parse Claude response:', text.slice(0, 500))
         }
