@@ -273,9 +273,9 @@ async function fetchClients({ organizationId }) {
 }
 
 // Custom hook for fetching all clients with SWR caching (use for search)
-export function useClients(organizationId) {
+export function useClients(organizationId, enabled = true) {
   const { data, error, isLoading, mutate } = useSWR(
-    organizationId ? ['clients', organizationId] : null,
+    enabled && organizationId ? ['clients', organizationId] : null,
     () => fetchClients({ organizationId }),
     {
       revalidateOnFocus: false,

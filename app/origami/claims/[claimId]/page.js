@@ -496,8 +496,14 @@ export default function OrigamiClaimDetailPage() {
                     label: `${l.description || l.street1 || 'Location ' + l.location_id}${l.city ? ' — ' + l.city : ''}`,
                   }))
                 ]}
-                isLink={!!(location?.app_location_id && location?.app_client_id)}
-                href={location?.app_location_id && location?.app_client_id ? `/clients/${location.app_client_id}/locations/${location.app_location_id}` : ''}
+                isLink={!!(location?.location_id)}
+                href={
+                  location?.app_location_id && location?.app_client_id
+                    ? `/clients/${location.app_client_id}/locations/${location.app_location_id}`
+                    : location?.location_id
+                    ? `/origami/locations/${location.location_id}`
+                    : ''
+                }
               />
               {!editingClaim && locationAddress && (
                 <DetailRow label="Location Address" value={locationAddress} />

@@ -13,8 +13,11 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedLetter, setSelectedLetter] = useState(null)
 
-  // Use SWR-cached clients hook - instant load on subsequent visits
-  const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id)
+  // Only fetch the full client list when the user actually needs it (searching
+  // or picking a letter). The recently-viewed section + letter tiles render
+  // without waiting on 4000+ rows.
+  const needsClients = !!searchQuery.trim() || !!selectedLetter
+  const { clients, isLoading: clientsLoading, isError } = useClients(profile?.organization_id, needsClients)
 
   // Get recently viewed clients
   const { recentClients } = useRecentClients(profile?.organization_id)
@@ -24,15 +27,15 @@ export default function Home() {
   const [showTasksPanel, setShowTasksPanel] = useState(true)
   const [slowLoad, setSlowLoad] = useState(false)
 
-  // Track slow loading
+  // Track slow loading — only for auth, not for the deferred client list
   useEffect(() => {
-    if (authLoading || clientsLoading) {
+    if (authLoading) {
       const timer = setTimeout(() => setSlowLoad(true), 5000)
       return () => clearTimeout(timer)
     } else {
       setSlowLoad(false)
     }
-  }, [authLoading, clientsLoading])
+  }, [authLoading])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -241,7 +244,7 @@ export default function Home() {
 
       <main className={`max-w-7xl mx-auto px-6 py-8 transition-all duration-300 ${showTasksPanel && myTasks.length > 0 ? 'mr-60' : ''}`}>
         {/* Loading State */}
-        {(authLoading || !profile || clientsLoading) && (
+        {(authLoading || !profile) && (
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-[#006B7D]"></div>
             <p className="mt-4 text-gray-600 font-medium">Loading...</p>
@@ -269,7 +272,7 @@ export default function Home() {
         )}
 
         {/* Main Content - Only show when loaded */}
-        {!authLoading && profile && !clientsLoading && !isError && (
+        {!authLoading && profile && !isError && (
           <>
             {/* Recently Viewed Section */}
             {!searchQuery && recentClients.length > 0 && (
@@ -339,10 +342,14 @@ export default function Home() {
             {searchQuery ? (
               <div>
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Results ({filteredClients.length})
+                  {clientsLoading ? 'Searching…' : `Results (${filteredClients.length})`}
                 </h3>
                 <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-                  {filteredClients.length > 0 ? filteredClients.map(client => {
+                  {clientsLoading ? (
+                    <div className="px-4 py-8 text-center">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[#006B7D]"></div>
+                    </div>
+                  ) : filteredClients.length > 0 ? filteredClients.map(client => {
                     const href = client.app_client_id ? `/clients/${client.app_client_id}` : client.origami_client_id ? `/origami/clients/${client.origami_client_id}` : `/clients/${client.id}`
                     return (
                       <a key={client.origami_client_id || client.id} href={href} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer">
@@ -364,26 +371,19 @@ export default function Home() {
             ) : (
               <div>
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  All Clients ({clients.length})
+                  All Clients
                 </h3>
                 <div className="flex flex-wrap gap-1 mb-3">
                   {'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('').map(letter => {
-                    const count = clients.filter(c => {
-                      const first = (c.name || '').charAt(0).toUpperCase()
-                      return letter === '#' ? !/[A-Z]/.test(first) : first === letter
-                    }).length
                     const isActive = selectedLetter === letter
                     return (
                       <button
                         key={letter}
                         onClick={() => setSelectedLetter(isActive ? null : letter)}
-                        disabled={count === 0}
                         className={`w-9 h-9 text-sm font-semibold rounded-lg transition-colors ${
                           isActive
                             ? 'bg-[#006B7D] text-white'
-                            : count > 0
-                              ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-[#006B7D]/30'
-                              : 'bg-gray-50 text-gray-300 cursor-default'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-[#006B7D]/30'
                         }`}
                       >
                         {letter}
@@ -392,13 +392,22 @@ export default function Home() {
                   })}
                 </div>
                 {selectedLetter && (() => {
+                  if (clientsLoading) {
+                    return (
+                      <div className="bg-white rounded-lg border border-gray-200 px-4 py-8 text-center">
+                        <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[#006B7D]"></div>
+                      </div>
+                    )
+                  }
                   const letterClients = clients.filter(c => {
                     const first = (c.name || '').charAt(0).toUpperCase()
                     return selectedLetter === '#' ? !/[A-Z]/.test(first) : first === selectedLetter
                   })
                   return (
                     <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-                      {letterClients.map(client => {
+                      {letterClients.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-gray-400 text-sm">No clients starting with &quot;{selectedLetter}&quot;</div>
+                      ) : letterClients.map(client => {
                         const href = client.app_client_id ? `/clients/${client.app_client_id}` : client.origami_client_id ? `/origami/clients/${client.origami_client_id}` : `/clients/${client.id}`
                         return (
                           <a key={client.origami_client_id || client.id} href={href} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer">

@@ -651,8 +651,9 @@ export default function ClientDetailPage() {
                   />
                 ) : null}
 
-                {/* Origami Locations (not linked to app) */}
-                {origamiLocations.length > 0 && activeLocations.length === 0 && (
+                {/* Origami Locations — always show so loss summaries can be
+                    printed for locations not yet linked to the app */}
+                {origamiLocations.length > 0 && (
                   <div className={activeLocations.length > 0 ? 'mt-6' : ''}>
                     <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
                       Origami Locations ({origamiLocations.length})
