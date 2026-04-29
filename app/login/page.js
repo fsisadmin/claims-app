@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signIn } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,6 +29,9 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      // Clear any stale session so we don't accidentally end up logged in as
+      // a previous user when sign-in fails or races with cached state.
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch {}
       await signIn(formData.email, formData.password)
       router.push('/')
     } catch (error) {
