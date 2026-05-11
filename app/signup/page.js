@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { signUpWithInvitation, getInvitationByToken } from '@/lib/auth'
+import { getInvitationByToken, signIn } from '@/lib/auth'
 
 function SignupContent() {
   const router = useRouter()
@@ -73,16 +73,27 @@ function SignupContent() {
     }
 
     try {
-      await signUpWithInvitation(
-        formData.email,
-        formData.password,
-        formData.fullName,
-        token
-      )
-      setSuccess(true)
-      setTimeout(() => {
-        router.push('/login')
-      }, 2000)
+      const res = await fetch('/api/admin/accept-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          password: formData.password,
+          fullName: formData.fullName,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to create account')
+
+      // Sign the user in immediately so they don't have to retype credentials
+      try {
+        await signIn(formData.email, formData.password)
+        router.push('/')
+      } catch {
+        // If auto-login fails for any reason, fall back to the login screen
+        setSuccess(true)
+        setTimeout(() => router.push('/login'), 1500)
+      }
     } catch (error) {
       console.error('Signup error:', error)
       setError(error.message || 'Failed to create account')
