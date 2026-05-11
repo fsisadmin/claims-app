@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
 
 const FROM_ADDRESS = 'FSIS Claims <no-reply@franklinst.com>'
 const REPLY_TO = null // set to an address if you want replies routed somewhere
@@ -63,9 +64,8 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    // Generate token via existing RPC (same as createInvitation)
-    const { data: token, error: tokenErr } = await supabaseAdmin.rpc('generate_invitation_token')
-    if (tokenErr) throw tokenErr
+    // Generate a URL-safe random token (no DB extension dependency)
+    const token = randomBytes(32).toString('base64url')
 
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7)
