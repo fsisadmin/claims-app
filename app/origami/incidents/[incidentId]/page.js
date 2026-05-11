@@ -282,6 +282,12 @@ export default function OrigamiIncidentDetailPage() {
       <OrigamiNotesSidebar
         notes={notes}
         entityName={incident.incident_number ? `Incident ${incident.incident_number}` : 'Incident'}
+        parentDomainId={11}
+        parentId={incident.incident_id}
+        clientId={incident.client_id}
+        authorName={profile?.full_name}
+        authorEmail={profile?.email || user?.email}
+        onNoteAdded={(note) => setNotes(prev => [note, ...prev])}
       />
 
       <main className="max-w-7xl mx-auto px-6 py-6">

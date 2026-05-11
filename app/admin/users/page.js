@@ -15,6 +15,41 @@ export default function AdminUsers() {
   const [error, setError] = useState(null)
   const [editingUserId, setEditingUserId] = useState(null)
   const [updatingRole, setUpdatingRole] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('user')
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState(null)
+  const [inviteSuccess, setInviteSuccess] = useState(null)
+
+  async function handleInvite(e) {
+    e.preventDefault()
+    setInviteError(null)
+    setInviteSuccess(null)
+    setInviting(true)
+    try {
+      const res = await fetch('/api/admin/send-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail,
+          role: inviteRole,
+          organizationId: profile.organization_id,
+          invitedBy: profile.id,
+          inviterName: profile.full_name,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to send invitation')
+      setInviteSuccess({ message: `Invitation emailed to ${inviteEmail}.`, url: json.inviteUrl })
+      setInviteEmail('')
+      setInviteRole('user')
+    } catch (err) {
+      setInviteError(err.message)
+    } finally {
+      setInviting(false)
+    }
+  }
 
   // Redirect if not admin
   useEffect(() => {
@@ -100,15 +135,107 @@ export default function AdminUsers() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">
-            User Management
-          </h1>
-          <p className="text-gray-600">
-            Manage users and roles for{' '}
-            {profile?.organizations?.name || 'your organization'}
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold text-gray-900 mb-2">
+              User Management
+            </h1>
+            <p className="text-gray-600">
+              Manage users and roles for{' '}
+              {profile?.organizations?.name || 'your organization'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowInvite(true); setInviteError(null); setInviteSuccess(null) }}
+            className="bg-[#006B7D] hover:bg-[#008BA3] text-white px-5 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Invite User
+          </button>
         </div>
+
+        {/* Invite Modal */}
+        {showInvite && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowInvite(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Invite User</h2>
+                <button onClick={() => setShowInvite(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-4">
+                They&apos;ll receive an email with a link to create their account.
+              </p>
+
+              {inviteError && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{inviteError}</div>
+              )}
+
+              {inviteSuccess && (
+                <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                  <p className="text-green-800 font-medium">{inviteSuccess.message}</p>
+                  {inviteSuccess.url && (
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(inviteSuccess.url); alert('Backup link copied.') }}
+                      className="mt-2 text-xs text-green-700 hover:text-green-900 underline"
+                    >
+                      Copy backup link
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <form onSubmit={handleInvite} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    required
+                    placeholder="user@franklinst.com"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900 placeholder:text-gray-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <select
+                    value={inviteRole}
+                    onChange={e => setInviteRole(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#006B7D]/20 focus:border-[#006B7D] text-gray-900 bg-white"
+                  >
+                    <option value="user">User</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInvite(false)}
+                    disabled={inviting}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={inviting || !inviteEmail}
+                    className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                  >
+                    {inviting ? 'Sending…' : 'Send Invitation'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -256,29 +383,6 @@ export default function AdminUsers() {
           </div>
         )}
 
-        {/* Instructions */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">
-            How to add new users
-          </h3>
-          <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-            <li>Have the new user sign up at /signup</li>
-            <li>
-              Once they sign up, run this SQL in Supabase SQL Editor (replace
-              USER_ID with their actual ID):
-            </li>
-          </ol>
-          <pre className="mt-3 bg-blue-100 text-blue-900 p-3 rounded text-xs overflow-x-auto">
-            {`UPDATE user_profiles
-SET role = 'user',
-    organization_id = '${profile?.organization_id || 'YOUR_ORG_ID'}'
-WHERE id = 'USER_ID_HERE';`}
-          </pre>
-          <p className="text-xs text-blue-700 mt-2">
-            You can find the user's ID in the Supabase Auth dashboard after they
-            sign up.
-          </p>
-        </div>
       </main>
     </div>
   )

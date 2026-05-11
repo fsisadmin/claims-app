@@ -40,26 +40,24 @@ export default function AddUserPage() {
     setSetupLink(null)
 
     try {
-      const response = await fetch('/api/admin/create-user', {
+      const response = await fetch('/api/admin/send-invitation', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
-          fullName,
           role,
           organizationId: profile.organization_id,
+          invitedBy: profile.id,
+          inviterName: profile.full_name,
         }),
       })
 
       const data = await response.json()
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create user')
+        throw new Error(data.error || 'Failed to send invitation')
       }
 
-      setSetupLink(data.setupLink)
+      setSetupLink(data.inviteUrl)
       setEmail('')
       setFullName('')
       setRole('user')
@@ -88,9 +86,9 @@ export default function AddUserPage() {
         </div>
 
         <div className="bg-white rounded-3xl shadow-md p-8">
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Add New User</h1>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Invite User</h1>
           <p className="text-gray-600 mb-8">
-            Create a new user account. They'll receive an email to set their password.
+            Invite a new user. They'll receive an email with a link to create their account.
           </p>
 
           {error && (
@@ -101,9 +99,9 @@ export default function AddUserPage() {
 
           {setupLink && (
             <div className="mb-6 bg-green-50 border border-green-200 rounded-2xl p-4">
-              <p className="text-green-800 font-medium mb-2">User created successfully!</p>
+              <p className="text-green-800 font-medium mb-2">Invitation emailed.</p>
               <p className="text-sm text-green-700 mb-3">
-                Copy this link and send it to the user to set up their password:
+                Backup link in case the email doesn&apos;t arrive:
               </p>
               <div className="bg-white p-3 rounded-lg border border-green-200">
                 <code className="text-xs text-gray-800 break-all">{setupLink}</code>
@@ -115,7 +113,7 @@ export default function AddUserPage() {
                 }}
                 className="mt-3 text-sm text-green-700 hover:text-green-800 font-medium"
               >
-                📋 Copy Link
+                Copy Link
               </button>
             </div>
           )}
@@ -170,7 +168,7 @@ export default function AddUserPage() {
                 disabled={loading}
                 className="flex-1 bg-[#006B7D] hover:bg-[#008BA3] text-white px-6 py-3.5 rounded-2xl font-semibold transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Creating...' : 'Create User'}
+                {loading ? 'Sending invitation…' : 'Send Invitation'}
               </button>
 
               <button

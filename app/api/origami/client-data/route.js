@@ -1,50 +1,86 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
+// Chunk size for .in() filter lists. PostgREST URL length tops out around
+// 12-15KB, so 250 UUIDs per chunk leaves comfortable headroom.
+const IN_CHUNK = 250
+
 async function fetchAll(supabase, table, select, filters = {}, orderBy = null) {
-  const PAGE_SIZE = 1000
-  let allRows = []
-  let from = 0
-  while (true) {
-    let query = supabase.from(table).select(select).range(from, from + PAGE_SIZE - 1)
-    if (orderBy) query = query.order(orderBy, { ascending: false })
-    for (const [key, val] of Object.entries(filters)) {
-      if (key.endsWith('_in')) {
-        const col = key.replace('_in', '')
-        query = query.in(col, val)
-      } else {
-        query = query.eq(key, val)
+  // Find the (at most one) `_in` filter — that's the one we may need to chunk.
+  const inEntry = Object.entries(filters).find(([k]) => k.endsWith('_in'))
+  const eqEntries = Object.entries(filters).filter(([k]) => !k.endsWith('_in'))
+
+  // If there's no `_in` filter, or its array is small enough, run once.
+  const runOnce = async (inValChunk) => {
+    const PAGE_SIZE = 1000
+    let allRows = []
+    let from = 0
+    while (true) {
+      let query = supabase.from(table).select(select).range(from, from + PAGE_SIZE - 1)
+      if (orderBy) query = query.order(orderBy, { ascending: false })
+      for (const [key, val] of eqEntries) query = query.eq(key, val)
+      if (inEntry && inValChunk) {
+        const col = inEntry[0].replace('_in', '')
+        query = query.in(col, inValChunk)
       }
+      const { data, error } = await query
+      if (error) {
+        const wrapped = new Error(`Supabase ${table} query failed: ${error.message}${error.details ? ' — ' + error.details : ''}${error.hint ? ' (hint: ' + error.hint + ')' : ''}`)
+        wrapped.code = error.code
+        wrapped.cause = error
+        throw wrapped
+      }
+      allRows = allRows.concat(data || [])
+      if (!data || data.length < PAGE_SIZE) break
+      from += PAGE_SIZE
     }
-    const { data, error } = await query
-    if (error) throw error
-    allRows = allRows.concat(data || [])
-    if (!data || data.length < PAGE_SIZE) break
-    from += PAGE_SIZE
+    return allRows
   }
-  return allRows
+
+  if (!inEntry) return runOnce(null)
+
+  const inVals = inEntry[1] || []
+  if (inVals.length === 0) return []
+  if (inVals.length <= IN_CHUNK) return runOnce(inVals)
+
+  // Chunk and merge
+  let out = []
+  for (let i = 0; i < inVals.length; i += IN_CHUNK) {
+    const chunk = inVals.slice(i, i + IN_CHUNK)
+    const rows = await runOnce(chunk)
+    out = out.concat(rows)
+  }
+  return out
 }
 
-// Fast note count per claim (no body text)
+// Fast note count per claim (no body text). Chunks `in()` over claim ids so
+// large clients don't blow past PostgREST's URL length limit.
 async function fetchNoteCounts(supabase, claimIds) {
   if (claimIds.length === 0) return {}
-  const PAGE_SIZE = 1000
   const counts = {}
-  let from = 0
-  while (true) {
-    let query = supabase
-      .from('origami_notes')
-      .select('parent_id')
-      .eq('parent_domain_id', 1)
-      .in('parent_id', claimIds)
-      .range(from, from + PAGE_SIZE - 1)
-    const { data, error } = await query
-    if (error) throw error
-    for (const n of (data || [])) {
-      counts[n.parent_id] = (counts[n.parent_id] || 0) + 1
+  for (let i = 0; i < claimIds.length; i += IN_CHUNK) {
+    const chunk = claimIds.slice(i, i + IN_CHUNK)
+    const PAGE_SIZE = 1000
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('origami_notes')
+        .select('parent_id')
+        .eq('parent_domain_id', 1)
+        .in('parent_id', chunk)
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) {
+        const wrapped = new Error(`origami_notes query failed: ${error.message}${error.details ? ' — ' + error.details : ''}`)
+        wrapped.code = error.code
+        wrapped.cause = error
+        throw wrapped
+      }
+      for (const n of (data || [])) {
+        counts[n.parent_id] = (counts[n.parent_id] || 0) + 1
+      }
+      if (!data || data.length < PAGE_SIZE) break
+      from += PAGE_SIZE
     }
-    if (!data || data.length < PAGE_SIZE) break
-    from += PAGE_SIZE
   }
   return counts
 }
@@ -391,7 +427,12 @@ export async function POST(request) {
       hasOrigamiData: true,
     })
   } catch (error) {
-    console.error('Client data error:', error)
+    console.error('Client data error:', {
+      message: error.message,
+      code: error.code,
+      details: error.cause?.details,
+      hint: error.cause?.hint,
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

@@ -391,6 +391,13 @@ export default function OrigamiClaimDetailPage() {
         notes={notes}
         files={files}
         entityName={claim.claim_number ? `Claim ${claim.claim_number}` : 'Claim'}
+        parentDomainId={1}
+        parentId={claim.claim_id}
+        clientId={claim.client_id}
+        authorName={profile?.full_name}
+        authorEmail={profile?.email || user?.email}
+        onNoteAdded={(note) => setNotes(prev => [note, ...prev])}
+        onFilesAdded={(newFiles) => setFiles(prev => [...newFiles, ...prev])}
       />
 
       <ClaimInsightsChat

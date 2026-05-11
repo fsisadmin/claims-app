@@ -94,11 +94,68 @@ function FileAttachment({ file }) {
   )
 }
 
-export default function OrigamiNotesSidebar({ notes = [], files = [], entityName = '' }) {
+export default function OrigamiNotesSidebar({
+  notes = [],
+  files = [],
+  entityName = '',
+  parentDomainId,
+  parentId,
+  clientId,
+  authorName,
+  authorEmail,
+  onNoteAdded,
+  onFilesAdded,
+}) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('notes')
+  const [composerBody, setComposerBody] = useState('')
+  const [composerSubject, setComposerSubject] = useState('')
+  const [composerExpanded, setComposerExpanded] = useState(false)
+  const [composerFiles, setComposerFiles] = useState([])
+  const [submitting, setSubmitting] = useState(false)
 
   const totalCount = notes.length + files.length
+  const canAdd = !!(parentDomainId && parentId)
+
+  const handleFilePick = (e) => {
+    const picked = Array.from(e.target.files || [])
+    if (picked.length) setComposerFiles(prev => [...prev, ...picked])
+    e.target.value = ''
+  }
+
+  const removeFile = (idx) => {
+    setComposerFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const submitNote = async () => {
+    if (!composerBody.trim() || submitting) return
+    setSubmitting(true)
+    try {
+      const form = new FormData()
+      form.append('parentDomainId', String(parentDomainId))
+      form.append('parentId', String(parentId))
+      form.append('body', composerBody)
+      if (composerSubject) form.append('subject', composerSubject)
+      if (authorName) form.append('authorName', authorName)
+      if (authorEmail) form.append('authorEmail', authorEmail)
+      if (clientId) form.append('clientId', String(clientId))
+      composerFiles.forEach(f => form.append('files', f))
+
+      const res = await fetch('/api/origami/add-note', { method: 'POST', body: form })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to add note')
+      setComposerBody('')
+      setComposerSubject('')
+      setComposerFiles([])
+      setComposerExpanded(false)
+      if (onNoteAdded) onNoteAdded(json.note)
+      if (onFilesAdded && json.files?.length) onFilesAdded(json.files)
+    } catch (err) {
+      alert('Failed to add note: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <>
@@ -169,6 +226,91 @@ export default function OrigamiNotesSidebar({ notes = [], files = [], entityName
                 Files ({files.length})
               </button>
             </div>
+
+            {/* Composer (notes tab only) */}
+            {activeTab === 'notes' && canAdd && (
+              <div className="border-b border-gray-200 px-4 py-3 bg-gray-50">
+                {!composerExpanded ? (
+                  <button
+                    onClick={() => setComposerExpanded(true)}
+                    className="w-full text-left text-sm text-gray-500 px-3 py-2 bg-white rounded-lg border border-gray-200 hover:border-[#006B7D]/40 hover:text-gray-700 transition-colors"
+                  >
+                    + Add a note...
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={composerSubject}
+                      onChange={e => setComposerSubject(e.target.value)}
+                      placeholder="Subject (optional)"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#006B7D] focus:ring-1 focus:ring-[#006B7D]/20 text-gray-900 placeholder:text-gray-400 bg-white"
+                    />
+                    <textarea
+                      value={composerBody}
+                      onChange={e => setComposerBody(e.target.value)}
+                      placeholder="Write a note..."
+                      rows={4}
+                      autoFocus
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#006B7D] focus:ring-1 focus:ring-[#006B7D]/20 text-gray-900 placeholder:text-gray-400 bg-white resize-none"
+                    />
+                    {/* Selected files */}
+                    {composerFiles.length > 0 && (
+                      <div className="space-y-1">
+                        {composerFiles.map((f, i) => (
+                          <div key={i} className="flex items-center gap-2 px-2 py-1 bg-white border border-gray-200 rounded-md text-xs">
+                            <span className="flex-1 truncate text-gray-700">{f.name}</span>
+                            <span className="text-gray-400">{formatFileSize(f.size)}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(i)}
+                              disabled={submitting}
+                              className="text-gray-400 hover:text-red-500"
+                              title="Remove"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="px-2.5 py-1.5 text-xs text-gray-600 hover:text-[#006B7D] hover:bg-[#006B7D]/5 border border-gray-200 hover:border-[#006B7D]/30 rounded-lg cursor-pointer flex items-center gap-1 font-medium transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        Attach
+                        <input type="file" multiple className="hidden" onChange={handleFilePick} disabled={submitting} />
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setComposerExpanded(false)
+                            setComposerBody('')
+                            setComposerSubject('')
+                            setComposerFiles([])
+                          }}
+                          disabled={submitting}
+                          className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={submitNote}
+                          disabled={submitting || !composerBody.trim()}
+                          className="px-3 py-1.5 text-xs bg-[#006B7D] hover:bg-[#008BA3] text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {submitting ? 'Posting…' : 'Post note'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-4 py-3">

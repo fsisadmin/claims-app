@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  createInvitation,
   getOrganizationInvitations,
   deleteInvitation,
 } from '@/lib/auth'
@@ -65,28 +64,30 @@ export default function AdminInvitePage() {
     setSendingInvite(true)
 
     try {
-      const invitation = await createInvitation(
-        formData.email,
-        profile.organization_id,
-        formData.role
-      )
-
-      // Generate invitation URL
-      const inviteUrl = `${window.location.origin}/signup?token=${invitation.token}`
+      const res = await fetch('/api/admin/send-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          role: formData.role,
+          organizationId: profile.organization_id,
+          invitedBy: profile.id,
+          inviterName: profile.full_name,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to send invitation')
 
       setSuccess({
-        message: 'Invitation created successfully!',
-        url: inviteUrl,
+        message: `Invitation emailed to ${formData.email}.`,
+        url: json.inviteUrl,
       })
 
-      // Reset form
       setFormData({ email: '', role: 'user' })
-
-      // Refresh invitations list
       await fetchInvitations()
     } catch (error) {
-      console.error('Error creating invitation:', error)
-      setError(error.message || 'Failed to create invitation')
+      console.error('Error sending invitation:', error)
+      setError(error.message || 'Failed to send invitation')
     } finally {
       setSendingInvite(false)
     }
@@ -155,7 +156,7 @@ export default function AdminInvitePage() {
             <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
               <p className="text-green-800 font-medium mb-2">{success.message}</p>
               <div className="bg-white border border-green-300 rounded p-3 mt-2">
-                <p className="text-xs text-gray-600 mb-1">Invitation Link:</p>
+                <p className="text-xs text-gray-600 mb-1">Backup link (in case the email doesn't arrive):</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -232,7 +233,7 @@ export default function AdminInvitePage() {
               disabled={sendingInvite}
               className="w-full bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {sendingInvite ? 'Creating invitation...' : 'Create invitation'}
+              {sendingInvite ? 'Sending invitation…' : 'Send invitation'}
             </button>
           </form>
         </div>
