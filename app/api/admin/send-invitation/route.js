@@ -70,6 +70,14 @@ export async function POST(request) {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7)
 
+    // Clear out any prior unused invitation for the same email so re-invites
+    // don't collide with the UNIQUE(email) constraint.
+    await supabaseAdmin
+      .from('user_invitations')
+      .delete()
+      .eq('email', email)
+      .is('used_at', null)
+
     const { data: invitation, error: insertErr } = await supabaseAdmin
       .from('user_invitations')
       .insert({
