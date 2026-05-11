@@ -24,7 +24,14 @@ export default function Header() {
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
-      router.push('/login')
+      // Wipe leftover supabase auth keys so the next sign-in can't pick up a
+      // stale session, and hard-reload to /login to reset all in-memory state.
+      try {
+        Object.keys(window.localStorage)
+          .filter(k => k.startsWith('risky-business-auth') || k.startsWith('sb-'))
+          .forEach(k => window.localStorage.removeItem(k))
+      } catch {}
+      window.location.assign('/login')
     }
   }
 

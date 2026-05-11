@@ -31,9 +31,18 @@ export default function LoginPage() {
     try {
       // Clear any stale session so we don't accidentally end up logged in as
       // a previous user when sign-in fails or races with cached state.
-      try { await supabase.auth.signOut({ scope: 'local' }) } catch {}
+      try { await supabase.auth.signOut({ scope: 'global' }) } catch {}
+      // Also wipe any leftover supabase auth keys from localStorage just in case
+      try {
+        Object.keys(window.localStorage)
+          .filter(k => k.startsWith('risky-business-auth') || k.startsWith('sb-'))
+          .forEach(k => window.localStorage.removeItem(k))
+      } catch {}
       await signIn(formData.email, formData.password)
-      router.push('/')
+      // Hard reload so every cached module / React state resets to the new
+      // user's session — router.push leaves AuthContext caches in place.
+      window.location.assign('/')
+      return
     } catch (error) {
       console.error('Login error:', error)
       setError(error.message || 'Failed to sign in')
