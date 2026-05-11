@@ -50,7 +50,13 @@ function inviteEmailHtml({ inviteUrl, organizationName, inviterName, role }) {
 
 export async function POST(request) {
   try {
-    const { email, role = 'user', organizationId, invitedBy, inviterName } = await request.json()
+    const body = await request.json()
+    const role = body.role || 'user'
+    const organizationId = body.organizationId
+    const invitedBy = body.invitedBy
+    const inviterName = body.inviterName
+    // Normalize email so case differences don't fight the UNIQUE(email) constraint
+    const email = (body.email || '').trim().toLowerCase()
 
     if (!email || !organizationId || !invitedBy) {
       return NextResponse.json({ error: 'email, organizationId, and invitedBy are required' }, { status: 400 })
@@ -71,11 +77,12 @@ export async function POST(request) {
     expiresAt.setDate(expiresAt.getDate() + 7)
 
     // Clear out any prior unused invitation for the same email so re-invites
-    // don't collide with the UNIQUE(email) constraint.
+    // don't collide with the UNIQUE(email) constraint. Case-insensitive match
+    // to clean up rows from older code that didn't normalize email.
     await supabaseAdmin
       .from('user_invitations')
       .delete()
-      .eq('email', email)
+      .ilike('email', email)
       .is('used_at', null)
 
     const { data: invitation, error: insertErr } = await supabaseAdmin
