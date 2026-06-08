@@ -67,6 +67,44 @@ export default function ClientDetailPage() {
   const [newIncidentForm, setNewIncidentForm] = useState({ claimant: '', loss_date: '', loss_description: '', event_description: '', location_id: '' })
   const [creatingClaim, setCreatingClaim] = useState(false)
   const [creatingIncident, setCreatingIncident] = useState(false)
+  const [matchOrigamiLoc, setMatchOrigamiLoc] = useState(null) // origami location being matched
+  const [matchTargetAppId, setMatchTargetAppId] = useState('')
+  const [matching, setMatching] = useState(false)
+  const [matchError, setMatchError] = useState(null)
+
+  const handleMatchLocation = async () => {
+    if (!matchOrigamiLoc || !matchTargetAppId) return
+    setMatching(true)
+    setMatchError(null)
+    try {
+      const res = await fetch('/api/origami/confirm-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'location',
+          organizationId: profile.organization_id,
+          userId: profile.id,
+          matches: [{
+            origami_location_id: matchOrigamiLoc.location_id,
+            app_location_id: matchTargetAppId,
+            confidence_score: 1.0,
+            match_reasoning: 'Manual match via FSIS UI',
+          }],
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to match')
+      // Drop the just-matched origami location from the local list so the user
+      // sees it disappear immediately
+      setOrigamiLocations(prev => prev.filter(l => l.location_id !== matchOrigamiLoc.location_id))
+      setMatchOrigamiLoc(null)
+      setMatchTargetAppId('')
+    } catch (e) {
+      setMatchError(e.message)
+    } finally {
+      setMatching(false)
+    }
+  }
 
   // Check URL for tab param
   useEffect(() => {
@@ -313,6 +351,21 @@ export default function ClientDetailPage() {
           </button>
         </div>
 
+        {/* Unlinked client banner */}
+        {origamiFetched && origamiClientIds.length === 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="flex items-start gap-2 text-sm text-amber-900">
+              <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="font-semibold">Client not linked to cert generator.</p>
+                <p className="mt-0.5 text-amber-800">Values may not be up to date — claims, policies, and incidents will be empty until this client is matched.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Client Card */}
         <div className="bg-white rounded-3xl shadow-md p-8 mb-6">
           {/* Logo and Client Details */}
@@ -396,101 +449,6 @@ export default function ClientDetailPage() {
               )}
             </div>
           </div>
-
-          {/* Portfolio Overview */}
-          {(activeLocations.length > 0 || lossAverages) && (
-            <div className="mt-8">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#006B7D] mb-4">Portfolio Overview</h3>
-
-              {activeLocations.length > 0 && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
-                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total TIV</p>
-                    <p className="text-2xl font-semibold text-[#006B7D]">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
-                        activeLocations.reduce((sum, loc) => {
-                          return sum + (Number(loc.real_property_value) || 0) + (Number(loc.personal_property_value) || 0) + (Number(loc.other_value) || 0) + (Number(loc.bi_rental_income) || 0)
-                        }, 0)
-                      )}
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
-                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total Units</p>
-                    <p className="text-2xl font-semibold text-[#006B7D]">
-                      {new Intl.NumberFormat('en-US').format(
-                        activeLocations.reduce((sum, loc) => sum + (Number(loc.num_units) || 0), 0)
-                      )}
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-[#006B7D]/5 to-[#006B7D]/10 rounded-2xl p-5 shadow-sm border border-[#006B7D]/10">
-                    <p className="text-xs font-medium text-[#006B7D]/70 mb-2">Total Square Footage</p>
-                    <p className="text-2xl font-semibold text-[#006B7D]">
-                      {new Intl.NumberFormat('en-US').format(
-                        activeLocations.reduce((sum, loc) => sum + (Number(loc.square_footage) || 0), 0)
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {lossAverages && (
-                <div className={`grid grid-cols-2 gap-3 ${activeLocations.length > 0 ? 'mt-3' : ''}`}>
-                  {/* Property Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-5 pt-4 pb-3 bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-white">Property</span>
-                    </div>
-                    <div className="px-5 py-4 space-y-4">
-                      <div>
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Avg Annual Loss</p>
-                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyAAL)}
-                        </p>
-                      </div>
-                      <div className="border-t border-gray-100 pt-3">
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Avg Loss Per Property</p>
-                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyPerLoc)}
-                        </p>
-                      </div>
-                      <div className="border-t border-gray-100 pt-3">
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Total Losses</p>
-                        <p className="text-xl font-semibold text-[#006B7D] mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.propertyTotal)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  {/* General Liability Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-5 pt-4 pb-3 bg-gradient-to-r from-[#006B7D] to-[#008BA3]">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-white">General Liability</span>
-                    </div>
-                    <div className="px-5 py-4 space-y-4">
-                      <div>
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Avg Annual Loss</p>
-                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glAAL)}
-                        </p>
-                      </div>
-                      <div className="border-t border-gray-100 pt-3">
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Avg Loss Per Property</p>
-                        <p className="text-xl font-semibold text-gray-900 mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glPerLoc)}
-                        </p>
-                      </div>
-                      <div className="border-t border-gray-100 pt-3">
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">5-Year Total Losses</p>
-                        <p className="text-xl font-semibold text-[#006B7D] mt-0.5">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(lossAverages.glTotal)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Edit Button */}
           <div className="mt-8 pt-6 border-t border-gray-200">
@@ -660,20 +618,117 @@ export default function ClientDetailPage() {
                     </h4>
                     <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
                       {origamiLocations.map(loc => (
-                        <a key={loc.location_id} href={`/origami/locations/${loc.location_id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{loc.description || loc.street1 || `Location ${loc.location_id}`}</p>
-                            <p className="text-xs text-gray-500">
+                        <div key={loc.location_id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                          <a
+                            href={`/origami/locations/${loc.location_id}`}
+                            className="flex-1 min-w-0 cursor-pointer pr-3"
+                          >
+                            <p className="text-sm font-medium text-gray-900 truncate">{loc.description || loc.street1 || `Location ${loc.location_id}`}</p>
+                            <p className="text-xs text-gray-500 truncate">
                               {[loc.street1, loc.city, loc.state_id, loc.postal_code].filter(Boolean).join(', ')}
                             </p>
-                          </div>
-                          <div className="flex items-center gap-2">
+                          </a>
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs text-gray-400">#{loc.display_code || loc.location_id}</span>
-                            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            {activeLocations.length > 0 && (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setMatchOrigamiLoc(loc)
+                                  setMatchTargetAppId('')
+                                  setMatchError(null)
+                                }}
+                                className="px-2 py-1 text-xs font-medium text-[#006B7D] hover:bg-[#006B7D]/10 border border-[#006B7D]/30 rounded transition-colors"
+                                title="Link this Origami location to an app location"
+                              >
+                                Match
+                              </button>
+                            )}
+                            <a href={`/origami/locations/${loc.location_id}`} className="text-gray-300">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </a>
                           </div>
-                        </a>
+                        </div>
                       ))}
                     </div>
+
+                    {/* Match Location Modal */}
+                    {matchOrigamiLoc && (
+                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setMatchOrigamiLoc(null)}>
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-xl font-semibold text-gray-900">Match Origami Location</h2>
+                            <button onClick={() => setMatchOrigamiLoc(null)} className="text-gray-400 hover:text-gray-600">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          <div className="px-6 py-4 flex-1 overflow-y-auto">
+                            <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                              <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Origami location</p>
+                              <p className="text-sm font-medium text-gray-900">{matchOrigamiLoc.description || matchOrigamiLoc.street1 || 'Location ' + matchOrigamiLoc.location_id}</p>
+                              <p className="text-xs text-gray-500">
+                                {[matchOrigamiLoc.street1, matchOrigamiLoc.city, matchOrigamiLoc.state_id, matchOrigamiLoc.postal_code].filter(Boolean).join(', ')}
+                              </p>
+                            </div>
+
+                            <p className="text-sm text-gray-600 mb-2">Pick the app location to link this to:</p>
+
+                            {matchError && (
+                              <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{matchError}</div>
+                            )}
+
+                            <div className="space-y-1">
+                              {activeLocations.map(al => {
+                                const selected = matchTargetAppId === al.id
+                                return (
+                                  <label
+                                    key={al.id}
+                                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${selected ? 'bg-[#006B7D]/5 border-[#006B7D]/40' : 'bg-white border-gray-200 hover:border-[#006B7D]/30'}`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="match-target"
+                                      className="mt-1 accent-[#006B7D]"
+                                      checked={selected}
+                                      onChange={() => setMatchTargetAppId(al.id)}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-gray-900 truncate">
+                                        {al.location_name || al.entity_name || 'Unnamed Location'}
+                                      </div>
+                                      <div className="text-xs text-gray-500 truncate">
+                                        {[al.street_address, al.city, al.state, al.zip].filter(Boolean).join(', ') || '—'}
+                                      </div>
+                                    </div>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-200 bg-gray-50">
+                            <button
+                              onClick={() => setMatchOrigamiLoc(null)}
+                              disabled={matching}
+                              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleMatchLocation}
+                              disabled={matching || !matchTargetAppId}
+                              className="px-4 py-2 bg-[#006B7D] hover:bg-[#008BA3] text-white text-sm font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {matching ? 'Matching…' : 'Match'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
